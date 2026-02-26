@@ -1,0 +1,36 @@
+"""
+配置文件 - 完整版
+"""
+
+# API配置
+API_KEY = "76shuJKddxV9x3LYMFVr92DrtAPoMYC4RVrCHFUEzj93I5Qbyl7SfDsqPOTR94hp"
+SECRET_KEY = "uYpLPQXHvtbMB2PNoEwOaUknEmXxFnEXwEo2WTQzOuLYJd3qeIs8TpsKXEJIHXUg"
+TESTNET = True
+
+# 交易配置
+SYMBOL = "BTCUSDT"
+LEVERAGE = 3
+POSITION_PCT = 0.2
+MIN_TRADE_VALUE = 100
+MAX_POSITION_PCT = 0.5
+
+# 风控配置
+STOP_LOSS = 0.03
+TAKE_PROFIT = 0.08
+MAX_DAILY_TRADES = 5
+CONSECUTIVE_LOSS_LIMIT = 3
+COOLDOWN_MINUTES = 60
+
+# 策略配置
+INTERVALS = {
+    "4h": 100,
+    "1h": 50,
+    "15m": 50
+}
+
+# 运行配置
+CHECK_INTERVAL = 1800  # 30分钟
+
+# 日志
+LOG_FILE = "logs/trading.log"
+LOG_DIR = "logs"
