@@ -1,0 +1,14 @@
+# 交易所配置 - 本地私有，不上传GitHub
+
+binance:
+  testnet:
+    api_key: "76shuJKddxV9x3LYMFVr92DrtAPoMYC4RVrCHFUEzj93I5Qbyl7SfDsqPOTR94hp"
+    secret_key: "uYpLPQXHvtbMB2PNoEwOaUknEmXxFnEXwEo2WTQzOuLYJd3qeIs8TpsKXEJIHXUg"
+  
+  production:
+    # 实盘API (只读权限)
+    api_key: "s6VdoVmiH7WLAgjMekASE6yXcwpzPlwTV9uryWGM2bOAKNU3ZWMMWr1T4cLfdY09"
+    secret_key: "7iIEE04m84Loi80ecixsk3z3mr47WXmFfRx3GsTi3q1XDjklSN8GMxMet1oRuRBX"
+
+  default_symbol: "BTCUSDT"
+  test_mode: true

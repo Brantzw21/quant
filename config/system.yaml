@@ -1,0 +1,21 @@
+# 系统配置 - 本地私有，不上传GitHub
+
+system:
+  name: "LH Quant v2.0"
+  version: "2.0.0"
+  environment: "production"
+
+directories:
+  root: "/root/.openclaw/workspace"
+  production: "/root/.openclaw/workspace/quant_v2"
+  development: "/root/.openclaw/workspace/quant"
+  github: "/root/.openclaw/workspace/quant_github"
+
+logging:
+  level: "INFO"
+  files:
+    trades: "logs/trades.json"
+    signals: "data/last_signal.json"
+
+monitoring:
+  check_interval: 1800

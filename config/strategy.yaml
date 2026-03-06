@@ -1,0 +1,47 @@
+# 策略配置
+
+trading:
+  symbol: "BTCUSDT"
+  interval:
+    signal: "1h"
+    market_state: "4h"
+  
+  leverage: 3
+  position_pct: 0.2  # 20%
+  min_trade_value: 100  # USDT
+
+risk:
+  stop_loss: 0.03    # 3%
+  take_profit: 0.08  # 8%
+  max_daily_trades: 5
+  consecutive_loss_limit: 3
+  cooldown_minutes: 60
+  max_position_pct: 0.5
+
+indicators:
+  # 趋势指标
+  ma:
+    fast: 10
+    medium: 20
+    slow: 50
+  
+  # 动量指标
+  rsi:
+    period: 14
+    oversold: 30
+    overbought: 70
+  
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  
+  # 波动指标
+  bollinger:
+    period: 20
+    std_dev: 2.0
+
+signals:
+  consensus_threshold: 2  # 至少2个指标共识
+  market_filter: true    # 市场状态过滤
+  high_volatility_threshold: 0.03  # 3%

@@ -1,0 +1,33 @@
+# 策略参数配置
+# 针对BTC/USDT 4小时周期优化
+
+# RSI参数 (优化后)
+RSI_PERIOD = 14  # RSI周期 (优化)
+RSI_OVERSOLD = 35  # 超卖阈值 (优化后 35)
+RSI_OVERBOUGHT = 65  # 超买阈值 (优化后 65)
+
+# MACD参数
+MACD_FAST = 12  # 快线周期
+MACD_SLOW = 26  # 慢线周期
+MACD_SIGNAL = 9  # 信号线周期
+
+# 布林带参数
+BB_PERIOD = 20  # 周期
+BB_STD = 2  # 标准差倍数
+
+# 均线参数
+MA_SHORT = 10  # 短期均线
+MA_MEDIUM = 20  # 中期均线
+MA_LONG = 50  # 长期均线
+
+# 仓位管理
+MAX_POSITION_PCT = 0.3  # 最大仓位 30%
+MAX_LEVERAGE = 3  # 最大杠杆 3x
+
+# 风控参数
+STOP_LOSS_PCT = 0.03  # 止损 3%
+TAKE_PROFIT_PCT = 0.08  # 止盈 8%
+
+# 过滤器
+MIN_CONFIDENCE = 0.6  # 最小置信度
+REQUIRED_SIGNALS = 2  # 需要至少2个信号确认
