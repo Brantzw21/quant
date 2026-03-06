@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import TradingViewChart from ./components/TradingViewChart
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ComposedChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, TrendingDown, Target, Activity, Shield, Clock, Play, Square, Globe, Zap, Wallet, Briefcase, Plus, Minus, Edit3, Copy, RefreshCw, PlayCircle, Bell } from "lucide-react";
 
@@ -735,6 +736,7 @@ function BacktestPage({ lang }) {
   const [gatekeeper, setGatekeeper] = useState(null);
   const [activeTab, setActiveTab] = useState("backtest");
   const [strategyList, setStrategyList] = useState([]);
+  const [klineData, setKlineData] = useState([])
   const [params, setParams] = useState({ 
     strategy: "RSI Multi-Factor", 
     start_date: "2024-01-01", 
@@ -766,6 +768,11 @@ function BacktestPage({ lang }) {
       body: JSON.stringify(params)
     }).then(r => r.json()).then(data => {
       setResults(data);
+      // 获取K线数据
+      fetch("/api/enhanced/kline?market=a_stock&symbol=sz.399006")
+        .then(r => r.json()).then(kdata => {
+          if(kdata && kdata.length > 0) setKlineData(kdata);
+        });
       setRunning(false);
     });
   };
