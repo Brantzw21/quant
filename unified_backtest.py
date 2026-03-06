@@ -53,7 +53,10 @@ def get_data(market, symbol, start, end):
     if market == "a_stock":
         return dm.get_a_stock_klines(symbol, start, end)
     elif market == "crypto":
-        return fdm.get_binance_klines(symbol, "1d", start, end)
+        # 转换日期格式
+        start_dt = datetime.strptime(start, '%Y-%m-%d')
+        since = int(start_dt.timestamp() * 1000)
+        return fdm.get_futures_klines(symbol, "1d", since=since)
     elif market == "forex":
         return dm.get_forex_klines(symbol, start, end)
     return None
