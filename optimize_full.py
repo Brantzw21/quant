@@ -5,7 +5,7 @@
 
 import sys
 import os
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 from binance.client import Client
 from config import API_KEY, SECRET_KEY, TESTNET

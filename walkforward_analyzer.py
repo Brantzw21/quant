@@ -6,7 +6,7 @@ Walk-Forward 回测分析
 
 import sys
 import os
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 import pandas as pd
 import numpy as np
@@ -182,7 +182,7 @@ def main():
     
     if results:
         # 保存结果
-        output_file = "/root/.openclaw/workspace/quant_v2/logs/walkforward_results.json"
+        output_file = "/root/.openclaw/workspace/quant/quant/logs/walkforward_results.json"
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w') as f:
             json.dump(results, f, indent=2, ensure_ascii=False)

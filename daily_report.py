@@ -12,7 +12,7 @@ from pathlib import Path
 
 # 配置
 WORKSPACE = "/root/.openclaw/workspace"
-QUANT_V2 = f"{WORKSPACE}/quant/v2"
+QUANT_V2 = f"{WORKSPACE}/quant/quant"
 GIT_REPO = "Brantzw21/quant"
 NOTIFY_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/569b1ffe-4392-4f93-a1a2-c54264461889"
 
@@ -90,7 +90,7 @@ def main():
     msg = f"""
 📊 Quant项目每日汇报 - {datetime.now().strftime('%Y-%m-%d')}
 
-【quant_v2 状态】
+【quant 状态】
 """
     
     if err:

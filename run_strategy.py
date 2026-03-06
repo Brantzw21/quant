@@ -7,7 +7,7 @@
 import sys
 import os
 import json
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 from light_strategy import generate_signal
 from notify import notify_signal_change
@@ -18,7 +18,7 @@ def run_strategy():
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始生成信号...")
     
     # 读取旧信号
-    signal_file = '/root/.openclaw/workspace/quant_v2/data/last_signal.json'
+    signal_file = '/root/.openclaw/workspace/quant/quant/data/last_signal.json'
     old_signal = 'N/A'
     try:
         with open(signal_file, 'r') as f:

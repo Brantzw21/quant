@@ -15,7 +15,7 @@ execution_simulator - 执行模拟
 
 import sys
 import os
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 from datetime import datetime
 from typing import Dict, List, Callable, Optional, Any

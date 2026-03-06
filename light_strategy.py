@@ -6,7 +6,7 @@
 
 import sys
 import os
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 from binance.client import Client
 from config import API_KEY, SECRET_KEY, TESTNET, REAL_API_KEY, REAL_SECRET_KEY
@@ -302,8 +302,8 @@ def generate_signal():
     }
     
     # 保存
-    os.makedirs('/root/.openclaw/workspace/quant_v2/data', exist_ok=True)
-    with open('/root/.openclaw/workspace/quant_v2/data/last_signal.json', 'w') as f:
+    os.makedirs('/root/.openclaw/workspace/quant/quant/data', exist_ok=True)
+    with open('/root/.openclaw/workspace/quant/quant/data/last_signal.json', 'w') as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
     
     print(f"\n{'='*50}")

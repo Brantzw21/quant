@@ -6,7 +6,7 @@
 
 import sys
 import os
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 from light_strategy import generate_signal as light_signal
 from strategies import STRATEGY_REGISTRY
@@ -163,6 +163,6 @@ if __name__ == "__main__":
     result = multi_strategy_signal()
     if result:
         # 保存
-        with open("/root/.openclaw/workspace/quant_v2/data/multi_strategy_signal.json", "w") as f:
+        with open("/root/.openclaw/workspace/quant/quant/data/multi_strategy_signal.json", "w") as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
         print("结果已保存")

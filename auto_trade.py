@@ -7,7 +7,7 @@
 import sys
 import os
 import json
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 from light_strategy import generate_signal
 from brokers.binance_broker import BinanceBroker
@@ -26,7 +26,7 @@ TAKE_PROFIT = 0.08  # 8%止盈
 LEVERAGE = 3  # 3x杠杆
 
 # 账户历史记录文件
-ACCOUNT_HISTORY_FILE = "/root/.openclaw/workspace/quant_v2/logs/account_history.json"
+ACCOUNT_HISTORY_FILE = "/root/.openclaw/workspace/quant/quant/logs/account_history.json"
 
 def load_account_history():
     """加载账户历史"""

@@ -5,7 +5,7 @@
 
 import sys
 import os
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 from light_strategy import get_multi_timeframe, calculate_rsi, calculate_ma
 import numpy as np

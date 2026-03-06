@@ -7,7 +7,7 @@ import json
 import os
 from datetime import datetime
 
-LOG_DIR = "/root/.openclaw/workspace/quant_v2/logs"
+LOG_DIR = "/root/.openclaw/workspace/quant/quant/logs"
 TRADE_LOG_FILE = os.path.join(LOG_DIR, "trade_decisions.json")
 
 def log_trade_decision(decision: dict):

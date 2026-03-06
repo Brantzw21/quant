@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 
 # ========== 配置 ==========
-DATA_DIR = "/root/.openclaw/workspace/quant_v2/data"
+DATA_DIR = "/root/.openclaw/workspace/quant/quant/data"
 ALERT_CONFIG_FILE = os.path.join(DATA_DIR, "market_alerts.json")
 
 # 主要指数配置
