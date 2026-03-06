@@ -13,6 +13,9 @@ os.environ.setdefault('BINANCE_TESTNET', 'false')
 sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 from config import API_KEY, SECRET_KEY, TESTNET
 
+# 组合回测
+from dashboard.portfolio_backtest import portfolio_backtest_bp
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -1126,3 +1129,7 @@ def wallets():
     """
     account_type = request.args.get('type', 'simulate')
     return jsonify(get_all_wallets(account_type))
+
+
+# 注册组合回测API
+app.register_blueprint(portfolio_backtest_bp)
