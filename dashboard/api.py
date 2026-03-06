@@ -4,6 +4,11 @@ import json, os, random, math, statistics, sys
 from datetime import datetime
 import threading, requests
 
+# 设置环境变量
+os.environ.setdefault('BINANCE_API_KEY', '76shuJKddxV9x3LYMFVr92DrtAPoMYC4RVrCHFUEzj93I5Qbyl7SfDsqPOTR94hp')
+os.environ.setdefault('BINANCE_SECRET_KEY', 'uYpLPQXHvtbMB2PNoEwOaUknEmXxFnEXwEo2WTQzOuLYJd3qeIs8TpsKXEJIHXUg')
+os.environ.setdefault('BINANCE_TESTNET', 'false')
+
 # 添加项目路径
 sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 from config import API_KEY, SECRET_KEY, TESTNET
