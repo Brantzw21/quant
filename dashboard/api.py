@@ -5,14 +5,14 @@ from datetime import datetime
 import threading, requests
 
 # 添加项目路径
-sys.path.insert(0, '/root/.openclaw/workspace/quant_v2')
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 from config import API_KEY, SECRET_KEY, TESTNET
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-DATA_DIR = "/root/.openclaw/workspace/quant_v2"
+DATA_DIR = "/root/.openclaw/workspace/quant/quant"
 TRADES_FILE = os.path.join(DATA_DIR, "logs/trades.json")
 SIGNAL_FILE = os.path.join(DATA_DIR, "data/last_signal.json")
 RISK_FILE = os.path.join(DATA_DIR, "data/risk_state.json")
