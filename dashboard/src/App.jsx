@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import RiskIndicator from ./components/RiskIndicator
 import TradingViewChart from ./components/TradingViewChart
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ComposedChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, TrendingDown, Target, Activity, Shield, Clock, Play, Square, Globe, Zap, Wallet, Briefcase, Plus, Minus, Edit3, Copy, RefreshCw, PlayCircle, Bell } from "lucide-react";
@@ -97,6 +98,7 @@ function DashboardPage({ lang }) {
   const [logs, setLogs] = useState([]);
   const [signal, setSignal] = useState({});
   const [risk, setRisk] = useState({});
+  const [signals, setSignals] = useState([]);
   const [drawdownData, setDrawdownData] = useState([]);
   const [returnsDist, setReturnsDist] = useState([]);
   const [monthlyData, setMonthlyData] = useState([]);
@@ -542,6 +544,7 @@ function MonitorPage({ lang }) {
 function RiskCenterPage({ lang }) {
   const t = translations[lang];
   const [risk, setRisk] = useState({});
+  const [signals, setSignals] = useState([]);
   
   useEffect(() => { fetch('/api/risk').then(r => r.json()).then(setRisk); }, []);
 
@@ -722,6 +725,18 @@ function WalletsPage({ lang }) {
       {(!wallets.spot?.length && !wallets.futures?.length && !wallets.positions?.length) && (
         <div className="text-center text-zinc-500 py-8">{t.no_data}</div>
       )}
+      {/* 策略风险监控 */}
+      <Card>
+        <CardHeader><CardTitle>策略风险</CardTitle></CardHeader>
+        <CardContent>
+          <RiskIndicator 
+            level={risk.risk_level === "Low" ? "low" : risk.risk_level === "Medium" ? "medium" : "high"}
+            maxDrawdown={risk.max_drawdown || 0}
+            leverage={risk.leverage || 1}
+            signals={signals}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

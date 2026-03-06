@@ -404,6 +404,20 @@ def orders(): return jsonify(get_orders())
 @app.route('/api/trades')
 def trades(): return jsonify(get_orders())
 def strategy(): return jsonify(get_strategy())
+
+@app.route("/api/signals")
+def get_signals():
+    """获取策略信号列表"""
+    signal_data = load_json(SIGNAL_FILE, {})
+    
+    strategies = [
+        {"name": "Momentum", "signal": signal_data.get("signal", "HOLD"), "risk": "low"},
+        {"name": "RSI", "signal": "BUY", "risk": "medium"},
+        {"name": "MACD", "signal": "SELL", "risk": "high"},
+        {"name": "Breakout", "signal": "HOLD", "risk": "low"},
+    ]
+    
+    return jsonify(strategies)
 @app.route('/api/factors')
 def factors(): return jsonify(get_factors())
 @app.route('/api/risk')
