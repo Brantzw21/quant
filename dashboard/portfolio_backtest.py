@@ -10,7 +10,7 @@ portfolio_backtest_bp = Blueprint('portfolio_backtest', __name__)
 MARKETS = {
     "a_stock": {"name": "A股", "examples": ["sz.399006", "sh.000300", "sh.510300"]},
     "crypto": {"name": "加密货币", "examples": ["BTCUSDT", "ETHUSDT"]},
-    "forex": {"name": "外汇", "examples": ["EURUSD", "GBPUSD"]}
+    "us_stock": {"name": "美股", "examples": ["AAPL", "MSFT", "GOOGL"]}
 }
 
 # 支持的策略

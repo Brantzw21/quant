@@ -35,12 +35,14 @@ MARKETS = {
             {"code": "BNBUSDT", "name": "币安币"}
         ]
     },
-    "forex": {
-        "name": "外汇", 
+    "us_stock": {
+        "name": "美股", 
         "symbols": [
-            {"code": "EURUSD", "name": "欧元/美元"},
-            {"code": "GBPUSD", "name": "英镑/美元"},
-            {"code": "USDJPY", "name": "美元/日元"}
+            {"code": "AAPL", "name": "苹果"},
+            {"code": "MSFT", "name": "微软"},
+            {"code": "GOOGL", "name": "谷歌"},
+            {"code": "TSLA", "name": "特斯拉"},
+            {"code": "NVDA", "name": "英伟达"}
         ]
     }
 }
