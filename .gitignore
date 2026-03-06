@@ -1,6 +1,13 @@
-*.pyc
 __pycache__/
-*.json
+*.pyc
+*.pyo
+.pytest_cache/
+*.log
+.env
+node_modules/
+dist/
+build/
+*.egg-info/
 logs/
 data/
-
+.pytest_cache/
