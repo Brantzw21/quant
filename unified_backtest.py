@@ -26,10 +26,10 @@ MARKETS = {
         "examples": ["BTCUSDT", "ETHUSDT"],
         "get_data": "get_binance_klines"
     },
-    "forex": {
-        "name": "外汇",
-        "examples": ["EURUSD", "GBPUSD"],
-        "get_data": "get_forex_klines"
+    "us_stock": {
+        "name": "美股",
+        "examples": ["AAPL", "MSFT", "GOOGL"],
+        "get_data": "get_us_stock_klines"
     }
 }
 
@@ -57,8 +57,8 @@ def get_data(market, symbol, start, end):
         start_dt = datetime.strptime(start, '%Y-%m-%d')
         since = int(start_dt.timestamp() * 1000)
         return fdm.get_futures_klines(symbol, "1d", since=since)
-    elif market == "forex":
-        return dm.get_forex_klines(symbol, start, end)
+    elif market == "us_stock":
+        return dm.get_us_stock_klines(symbol, start, end)
     return None
 
 
@@ -169,7 +169,7 @@ def main():
     parser = argparse.ArgumentParser(description='统一回测系统')
     
     parser.add_argument('--market', '-m', default='a_stock', 
-                       choices=['a_stock', 'crypto', 'forex'],
+                       choices=['a_stock', 'crypto', 'us_stock'],
                        help='市场类型')
     parser.add_argument('--symbol', '-s', default='sz.399006',
                        help='交易标的')
