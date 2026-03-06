@@ -17,6 +17,10 @@ from config import API_KEY, SECRET_KEY, TESTNET
 from dashboard.portfolio_backtest import portfolio_backtest_bp
 
 app = Flask(__name__)
+
+# 注册增强路由
+from dashboard.enhanced_backtest import register_enhanced_routes
+register_enhanced_routes(app)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
