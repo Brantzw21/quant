@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import RiskIndicator from ./components/RiskIndicator
-import TradingViewChart from ./components/TradingViewChart
+import RiskIndicator from "./components/RiskIndicator";
+import TradingViewChart from "./components/TradingViewChart";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ComposedChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, TrendingDown, Target, Activity, Shield, Clock, Play, Square, Globe, Zap, Wallet, Briefcase, Plus, Minus, Edit3, Copy, RefreshCw, PlayCircle, Bell } from "lucide-react";
 
@@ -180,7 +180,7 @@ function DashboardPage({ lang }) {
       )}
 
       {/* 账户统计 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <StatCard label={t.equity} value={`$${account.equity?.toLocaleString() || 0}`} trend={account.pnl_percent} icon={Wallet} color="cyan" />
         <StatCard label={t.balance} value={`$${account.balance?.toLocaleString() || 0}`} icon={Briefcase} color="blue" />
         <StatCard label={t.available} value={`$${account.available?.toLocaleString() || 0}`} icon={Activity} color="green" />
@@ -309,7 +309,7 @@ function DashboardPage({ lang }) {
       </div>
 
       {/* 绩效指标 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <StatCard label={t.sharpe} value={performance.sharpe_ratio || "---"} icon={Target} color="cyan" />
         <StatCard label={t.max_drawdown} value={`${performance.max_drawdown || 0}%`} icon={TrendingDown} color="red" />
         <StatCard label={t.win_rate} value={`${performance.win_rate || 0}%`} icon={Zap} color="green" />
@@ -753,6 +753,8 @@ function BacktestPage({ lang }) {
   const [strategyList, setStrategyList] = useState([]);
   const [klineData, setKlineData] = useState([])
   const [params, setParams] = useState({ 
+    market: "crypto",
+    symbol: "BTCUSDT",
     strategy: "RSI Multi-Factor", 
     start_date: "2024-01-01", 
     end_date: "2025-12-31", 
@@ -761,6 +763,30 @@ function BacktestPage({ lang }) {
     slippage: 5,
     seed: 42
   });
+
+  // 市场选项
+  const marketOptions = {
+    crypto: [
+      { code: "BTCUSDT", name: "BTC 比特币" },
+      { code: "ETHUSDT", name: "ETH 以太坊" },
+      { code: "BNBUSDT", name: "BNB 币安币" }
+    ],
+    us_stock: [
+      { code: "SPX", name: "SPX 标普500" },
+      { code: "SPY", name: "SPY ETF" },
+      { code: "AAPL", name: "AAPL 苹果" },
+      { code: "MSFT", name: "MSFT 微软" },
+      { code: "NVDA", name: "NVDA 英伟达" }
+    ],
+    a_stock: [
+      { code: "sz.399006", name: "创业板指" },
+      { code: "sh.000300", name: "沪深300" },
+      { code: "sh.000016", name: "上证50" }
+    ]
+  };
+
+  // 当前市场的标的列表
+  const currentSymbols = marketOptions[params.market] || marketOptions.crypto;
 
   // 获取策略列表和守门员规则
   useEffect(() => {
@@ -848,7 +874,21 @@ function BacktestPage({ lang }) {
       <Card>
         <CardHeader><CardTitle>{t.parameters}</CardTitle></CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div>
+              <label className="text-xs text-zinc-500 block mb-1">市场</label>
+              <select value={params.market} onChange={(e) => setParams({...params, market: e.target.value, symbol: marketOptions[e.target.value]?.[0]?.code || 'BTCUSDT'})} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm">
+                <option value="crypto">🚀 加密货币</option>
+                <option value="us_stock">🇺🇸 美股</option>
+                <option value="a_stock">🇨🇳 A股</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 block mb-1">标的</label>
+              <select value={params.symbol} onChange={(e) => setParams({...params, symbol: e.target.value})} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm">
+                {currentSymbols.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
+              </select>
+            </div>
             <div>
               <label className="text-xs text-zinc-500 block mb-1">{t.strategy}</label>
               <select value={params.strategy} onChange={(e) => setParams({...params, strategy: e.target.value})} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm">
@@ -904,7 +944,7 @@ function BacktestPage({ lang }) {
       {results && activeTab === "backtest" && (
         <>
           {/* 核心指标 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             <StatCard label={t.returns} value={`${results.total_return > 0 ? '+' : ''}${results.total_return}%`} icon={TrendingUp} color={results.total_return >= 0 ? "green" : "red"} />
             <StatCard label={t.sharpe} value={results.stats?.sharpe_ratio || "---"} icon={Target} color="cyan" />
             <StatCard label={t.max_drawdown} value={`${results.stats?.max_drawdown || 0}%`} icon={TrendingDown} color="red" />
@@ -951,7 +991,7 @@ function BacktestPage({ lang }) {
                       <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="day" stroke="#52525b" fontSize={11} />
+                  <XAxis dataKey="date" stroke="#52525b" fontSize={11} />
                   <YAxis stroke="#52525b" fontSize={11} />
                   <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '8px' }} formatter={v => [`$${Number(v).toLocaleString()}`, 'Equity']} />
                   <Area type="monotone" dataKey="equity" stroke="#22c55e" strokeWidth={2} fill="url(#btEqGrad)" name="Equity" />
@@ -959,6 +999,38 @@ function BacktestPage({ lang }) {
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          {/* 回报率曲线 */}
+          {results.returns_curve && (
+            <Card className="mt-4">
+              <CardHeader><CardTitle>回报率曲线</CardTitle></CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={results.returns_curve}>
+                    <defs>
+                      <linearGradient id="retGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" stroke="#52525b" fontSize={11} />
+                    <YAxis yAxisId="left" stroke="#52525b" fontSize={11} unit="%" />
+                    <YAxis yAxisId="right" orientation="right" stroke="#52525b" fontSize={11} />
+                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '8px' }} formatter={(v, name) => [name === '标的走势' ? `$${Number(v).toFixed(2)}` : `${Number(v).toFixed(2)}%`, name]} />
+                    <Area yAxisId="left" type="monotone" dataKey="cumulative_return" stroke="#3b82f6" strokeWidth={2} fill="url(#retGrad)" name="策略累计回报" />
+                    {results.price_data && results.price_data.length > 0 && (
+                      <Line yAxisId="right" type="monotone" dataKey={(d, i) => {
+                        // 通过 date 匹配 price_data
+                        const date = d.date;
+                        const priceItem = results.price_data.find(p => p.date === date);
+                        return priceItem ? priceItem.close : null;
+                      }} stroke="#fbbf24" strokeWidth={1} dot={false} name="标的走势" />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 
@@ -1076,18 +1148,22 @@ export default function App() {
 
       <div className="flex-1 flex flex-col min-h-0">
         {/* 顶部栏 */}
-        <div className="h-14 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
+        <div className="h-14 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-2 md:px-4 shrink-0">
           <div className="flex items-center gap-2 overflow-hidden">
+            {/* 移动端菜单按钮 */}
+            <button className="md:hidden p-2 -ml-2" onClick={() => setPage(p => p === "Menu" ? "Dashboard" : "Menu")}>
+              ☰
+            </button>
             <span className={`w-2 h-2 rounded-full shrink-0 ${systemStatus?.running ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></span>
-            <span className={`text-sm shrink-0 ${systemStatus?.running ? 'text-green-400' : 'text-red-400'}`}>{systemStatus?.running ? t.running : 'Stopped'}</span>
-            <span className="text-sm text-zinc-500 ml-1 shrink-0 hidden sm:inline">{systemStatus?.market}</span>
-            <span className="text-sm font-mono text-white ml-1 truncate">${systemStatus?.price?.toLocaleString()}</span>
+            <span className={`text-xs sm:text-sm shrink-0 ${systemStatus?.running ? 'text-green-400' : 'text-red-400'}`}>{systemStatus?.running ? t.running : 'Stopped'}</span>
+            <span className="text-xs sm:text-sm text-zinc-500 ml-1 shrink-0 hidden xs:inline">{systemStatus?.market}</span>
+            <span className="text-xs sm:text-sm font-mono text-white ml-1 truncate">${systemStatus?.price?.toLocaleString()}</span>
           </div>
           <button onClick={() => setLang(l => l === "zh" ? "en" : "zh")} className="px-2 py-1 text-xs bg-zinc-800 rounded-lg shrink-0 ml-2">{lang === "zh" ? "EN" : "中"}</button>
         </div>
         
         {/* 主内容区 */}
-        <div className="flex-1 p-2 md:p-4 overflow-auto pb-20">
+        <div className="flex-1 p-2 md:p-4 overflow-auto pb-20 md:pb-4">
           {page === "Dashboard" && <DashboardPage lang={lang} />}
           {page === "Wallets" && <WalletsPage lang={lang} />}
           {page === "Monitor" && <MonitorPage lang={lang} />}

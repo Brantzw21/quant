@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, make_response
 from flask_socketio import SocketIO, emit
-import json, os, random, math, statistics, sys
+import json, os, random, math, statistics, sys, numpy as np
 from datetime import datetime
 import threading, requests
 
@@ -11,7 +11,11 @@ os.environ.setdefault('BINANCE_TESTNET', 'false')
 
 # 添加项目路径
 sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
-from config import API_KEY, SECRET_KEY, TESTNET
+
+# API配置
+API_KEY = os.environ.get('BINANCE_API_KEY', '')
+SECRET_KEY = os.environ.get('BINANCE_SECRET_KEY', '')
+TESTNET = os.environ.get('BINANCE_TESTNET', 'false').lower() == 'true'
 
 # 组合回测
 from dashboard.portfolio_backtest import portfolio_backtest_bp
@@ -635,10 +639,11 @@ def metrics():
 
 @app.route('/api/backtest', methods=['POST'])
 def backtest():
-    """完整回测引擎"""
+    """完整回测引擎 - 支持真实数据"""
     data = request.json if request.method == 'POST' else {}
     
     # 参数
+    symbol = data.get('symbol', 'BTCUSDT')  # 投资标的
     strategy = data.get('strategy', 'RSI')
     start_date = data.get('start_date', '2024-01-01')
     end_date = data.get('end_date', '2025-12-31')
@@ -646,17 +651,129 @@ def backtest():
     fee = data.get('fee', 0.001)  # 手续费率
     slippage = data.get('slippage', 5)  # 基点
     seed = data.get('seed', 42)  # 随机种子
+    use_real_data = data.get('use_real_data', True)  # 默认使用真实数据
     
     import random
     import math
-    random.seed(seed)  # 使用用户指定的种子
-    days = (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days
-    days = min(days, 365)
+    random.seed(seed)
     
-    # 模拟价格
-    prices = [50000]
-    for _ in range(days):
-        prices.append(prices[-1] * (1 + random.uniform(-0.03, 0.035)))
+    # 标的映射到API符号
+    symbol_map = {
+        'BTCUSDT': {'type': 'futures', 'symbol': 'BTC/USDT:USDT', 'name': 'BTC'},
+        'BTC': {'type': 'futures', 'symbol': 'BTC/USDT:USDT', 'name': 'BTC'},
+        'ETHUSDT': {'type': 'futures', 'symbol': 'ETH/USDT:USDT', 'name': 'ETH'},
+        'ETH': {'type': 'futures', 'symbol': 'ETH/USDT:USDT', 'name': 'ETH'},
+        'CSI300': {'type': 'a_stock', 'symbol': 'sz.399300', 'name': '沪深300'},
+        'SPX': {'type': 'us_stock', 'symbol': '^GSPC', 'name': '标普500'},
+        'SPY': {'type': 'us_stock', 'symbol': 'SPY', 'name': 'SPY ETF'},
+    }
+    
+    # 尝试获取真实数据
+    real_prices = []
+    data_source = "simulated"
+    
+    if use_real_data and symbol in symbol_map:
+        try:
+            cfg = symbol_map[symbol]
+            
+            if cfg['type'] == 'futures':
+                # Binance 合约数据 (公开API，无需认证)
+                import ccxt
+                exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+                
+                # 计算日期范围的时间戳
+                start_ts = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp() * 1000)
+                end_ts = int(datetime.strptime(end_date, '%Y-%m-%d').timestamp() * 1000)
+                
+                # 获取K线数据
+                ohlcv = exchange.fetch_ohlcv(cfg['symbol'], '1d', start_ts, limit=500)
+                
+                # 过滤日期范围
+                for k in ohlcv:
+                    if start_ts <= k[0] <= end_ts:
+                        real_prices.append({
+                            'date': datetime.fromtimestamp(k[0]/1000).strftime('%Y-%m-%d'),
+                            'close': k[4],
+                            'high': k[2],
+                            'low': k[3],
+                            'open': k[1]
+                        })
+                data_source = f"Binance Futures ({cfg['name']})"
+                
+            elif cfg['type'] == 'us_stock':
+                # Yahoo Finance 美股数据
+                import yfinance as yf
+                ticker = yf.Ticker(cfg['symbol'])
+                hist = ticker.history(start=start_date, end=end_date)
+                
+                for idx, row in hist.iterrows():
+                    real_prices.append({
+                        'date': idx.strftime('%Y-%m-%d'),
+                        'close': row['Close'],
+                        'high': row['High'],
+                        'low': row['Low'],
+                        'open': row['Open']
+                    })
+                data_source = f"Yahoo Finance ({cfg['name']})"
+                
+            elif cfg['type'] == 'a_stock':
+                # A股数据 - 使用tushare或akshare
+                try:
+                    import akshare as ak
+                    # 沪深300指数
+                    if cfg['symbol'] == 'sz.399300':
+                        df = ak.stock_zh_index_daily(symbol="sz399300")
+                        df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+                        for _, row in df.iterrows():
+                            real_prices.append({
+                                'date': row['date'],
+                                'close': row['close'],
+                                'high': row['high'],
+                                'low': row['low'],
+                                'open': row['open']
+                            })
+                        data_source = f"Akshare ({cfg['name']})"
+                except Exception as e:
+                    print(f"A股数据获取失败: {e}")
+                    
+        except Exception as e:
+            print(f"真实数据获取失败: {e}, 将使用模拟数据")
+            real_prices = []
+    
+    # 如果没有真实数据，使用模拟
+    if not real_prices:
+        # 标的配置：初始价格、波动率（模拟用）
+        symbol_config = {
+            'BTCUSDT': {'initial_price': 50000, 'volatility': 0.035, 'drift': 0.0001},
+            'BTC': {'initial_price': 50000, 'volatility': 0.035, 'drift': 0.0001},
+            'CSI300': {'initial_price': 4000, 'volatility': 0.015, 'drift': 0.00005},
+            'SPX': {'initial_price': 4500, 'volatility': 0.012, 'drift': 0.00003},
+            'SPY': {'initial_price': 450, 'volatility': 0.012, 'drift': 0.00003},
+            'ETHUSDT': {'initial_price': 3000, 'volatility': 0.04, 'drift': 0.0001},
+            'ETH': {'initial_price': 3000, 'volatility': 0.04, 'drift': 0.0001},
+        }
+        
+        cfg = symbol_config.get(symbol, symbol_config['BTCUSDT'])
+        initial_price = cfg['initial_price']
+        volatility = cfg['volatility']
+        drift = cfg['drift']
+        
+        days = (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days
+        days = min(days, 365)
+        
+        # 模拟价格（几何布朗运动）
+        prices = [initial_price]
+        for _ in range(days):
+            change = random.gauss(drift, volatility)
+            prices.append(prices[-1] * (1 + change))
+        
+        # 转换为统一格式
+        real_prices = [{'date': f'Day {i+1}', 'close': p} for i, p in enumerate(prices)]
+        data_source = "simulated (geometric brownian motion)"
+    
+    # 使用真实/模拟价格进行回测
+    days = len(real_prices)
+    prices = [p['close'] for p in real_prices]
     
     # 回测模拟（支持做空）
     equity = initial_capital
@@ -719,7 +836,12 @@ def backtest():
         else:
             total_value = equity
         
-        equity_curve.append({"day": i, "equity": round(total_value, 2), "price": round(price, 2)})
+        # 使用真实日期
+        if real_prices and i < len(real_prices):
+            date_label = real_prices[i].get('date', f"Day {i}")
+        else:
+            date_label = f"Day {i}"
+        equity_curve.append({"date": date_label, "equity": round(total_value, 2), "price": round(price, 2)})
     
     # 计算指标
     equity_values = [e["equity"] for e in equity_curve]
@@ -778,7 +900,28 @@ def backtest():
     
     total_return = (equity_values[-1] - initial_capital) / initial_capital * 100
     
+    # 构建回报率曲线
+    returns_curve = []
+    cumulative_return = 0
+    for i, ret in enumerate(returns):
+        cumulative_return += ret
+        # 使用真实日期
+        if real_prices and i+1 < len(real_prices):
+            date_label = real_prices[i+1].get('date', f"Day {i+2}")
+        else:
+            date_label = f"Day {i+2}"
+        returns_curve.append({
+            "date": date_label,
+            "daily_return": round(ret * 100, 2),
+            "cumulative_return": round(cumulative_return * 100, 2)
+        })
+        
+        # 同时更新 equity_curve 的日期
+        if i < len(equity_curve):
+            equity_curve[i]["date"] = date_label
+    
     return jsonify({
+        "symbol": symbol,
         "strategy": strategy,
         "start_date": start_date,
         "end_date": end_date,
@@ -786,7 +929,10 @@ def backtest():
         "final_equity": round(equity_values[-1], 2),
         "total_return": round(total_return, 2),
         "equity_curve": equity_curve,
+        "returns_curve": returns_curve,
         "trades": trades,
+        "data_source": data_source,
+        "price_data": real_prices,  # 返回价格数据供图表使用
         "stats": {
             "total_trades": len(trades),
             "win_rate": round(win_rate, 1),
