@@ -1,0 +1,56 @@
+# 模拟账户配置
+# 用于Dashboard初始化和API返回
+
+ACCOUNTS = {
+    # 币安模拟盘 (使用测试网API)
+    "binance_simulate": {
+        "name": "币安模拟盘",
+        "initial_capital": None,  # 使用测试网真实余额
+        "data_source": "binance_testnet",
+        "auto_trade": True  # 自动交易
+    },
+    
+    # 币安实盘 (使用真实API)
+    "binance_real": {
+        "name": "币安实盘",
+        "initial_capital": None,  # 使用实盘真实余额
+        "data_source": "binance_real",
+        "auto_trade": True  # 自动交易
+    },
+    
+    # A股模拟盘
+    "a_stock_simulate": {
+        "name": "A股模拟盘",
+        "initial_capital": 10000,  # 初始资金 10000元
+        "currency": "CNY",
+        "position": 0,  # 空仓
+        "data_source": "akshare",  # 真实指数价格
+        "index": "sz399300",  # 沪深300
+        "auto_trade": False  # 手动交易
+    },
+    
+    # 美股模拟盘
+    "us_stock_simulate": {
+        "name": "美股模拟盘",
+        "initial_capital": 1500,  # 初始资金 1500美元
+        "currency": "USD",
+        "position": 0,  # 空仓
+        "data_source": "polygon",  # 真实价格
+        "ticker": "SPY",  # SPY ETF
+        "auto_trade": False  # 手动交易
+    }
+}
+
+# 交易配置
+TRADING_CONFIG = {
+    "binance": {
+        "symbol": "BTCUSDT",
+        "min_confidence": 0.6,  # 最低置信度
+        "position_size": 0.02,  # 每次交易数量
+        "stop_loss": 0.03,  # 3%止损
+        "take_profit": 0.08  # 8%止盈
+    }
+}
+
+# 自动交易开关
+AUTO_TRADE_ENABLED = True  # 币安实盘自动交易

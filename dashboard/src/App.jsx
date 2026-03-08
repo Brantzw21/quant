@@ -86,7 +86,7 @@ const StatCard = ({ label, value, trend, icon: Icon, color = "cyan", sub }) => {
 };
 
 // Dashboard Page
-function DashboardPage({ lang }) {
+function DashboardPage({ lang, currentAccount, onAccountChange }) {
   const t = translations[lang];
   const [loading, setLoading] = useState(false);
   const [account, setAccount] = useState({ equity: 0, balance: 0, available: 0, margin: 0, position: 0, unrealized_pnl: 0, realized_pnl: 0, total_pnl: 0, pnl_percent: 0 });
@@ -108,9 +108,10 @@ function DashboardPage({ lang }) {
 
   const fetchData = () => {
     setLoading(true);
+    const accountType = currentAccount || 'simulate';
     Promise.all([
-      fetch('/api/account').then(r => r.json()),
-      fetch('/api/positions').then(r => r.json()),
+      fetch(`/api/account?type=${accountType}`).then(r => r.json()),
+      fetch(`/api/positions?type=${accountType}`).then(r => r.json()),
       fetch('/api/orders').then(r => r.json()),
       fetch('/api/trades').then(r => r.json()),
       fetch('/api/equity').then(r => r.json()),
@@ -141,12 +142,30 @@ function DashboardPage({ lang }) {
     }).catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetchData(); const timer = setInterval(fetchData, 10000); return () => clearInterval(timer); }, []);
+  // 根据账户类型获取数据
+  useEffect(() => { 
+    fetchData(); 
+    const timer = setInterval(fetchData, 10000); 
+    return () => clearInterval(timer); 
+  }, [currentAccount]);
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">{t.dashboard}</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-bold">{t.dashboard}</h2>
+          {/* 账户切换 */}
+          <select 
+            className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            value={currentAccount}
+            onChange={e => onAccountChange(e.target.value)}
+          >
+            <option value="binance_simulate">🎮 币安模拟盘</option>
+            <option value="binance_real">📈 币安实盘</option>
+            <option value="a_stock_simulate">🇨🇳 A股模拟盘</option>
+            <option value="us_stock_simulate">🇺🇸 美股模拟盘</option>
+          </select>
+        </div>
         <div className="flex items-center gap-2">
           {strategies.length > 0 && (
             <select 
@@ -1111,6 +1130,7 @@ function BacktestPage({ lang }) {
 export default function App() {
   const [page, setPage] = useState("Dashboard");
   const [lang, setLang] = useState("zh");
+  const [currentAccount, setCurrentAccount] = useState("binance_simulate");
   const [systemStatus, setSystemStatus] = useState({ running: true, price: 67850, signal: "HOLD", market: "BTC/USDT" });
   const t = translations[lang];
   
@@ -1164,7 +1184,7 @@ export default function App() {
         
         {/* 主内容区 */}
         <div className="flex-1 p-2 md:p-4 overflow-auto pb-20 md:pb-4">
-          {page === "Dashboard" && <DashboardPage lang={lang} />}
+          {page === "Dashboard" && <DashboardPage lang={lang} currentAccount={currentAccount} onAccountChange={setCurrentAccount} />}
           {page === "Wallets" && <WalletsPage lang={lang} />}
           {page === "Monitor" && <MonitorPage lang={lang} />}
           {page === "Strategies" && <StrategiesPage lang={lang} />}

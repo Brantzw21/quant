@@ -7,7 +7,7 @@ import os
 # API配置 - 从环境变量读取
 API_KEY = os.getenv("BINANCE_API_KEY", "")
 SECRET_KEY = os.getenv("BINANCE_SECRET_KEY", "")
-TESTNET = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
+TESTNET = os.getenv("BINANCE_TESTNET", "false").lower() == "true"
 
 # 实盘API配置 - 从环境变量读取
 REAL_API_KEY = os.getenv("BINANCE_REAL_API_KEY", "")

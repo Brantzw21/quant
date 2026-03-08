@@ -92,14 +92,23 @@ def run_enhanced_backtest():
     
     # 标的映射
     symbol_map = {
+        # 加密货币
         'BTCUSDT': {'type': 'crypto', 'ccxt': 'BTC/USDT:USDT'},
         'ETHUSDT': {'type': 'crypto', 'ccxt': 'ETH/USDT:USDT'},
         'BNBUSDT': {'type': 'crypto', 'ccxt': 'BNB/USDT:USDT'},
-        'SPX': {'type': 'us_stock', 'yahoo': '^GSPC'},
-        '^GSPC': {'type': 'us_stock', 'yahoo': '^GSPC'},
+        # 美股
+        'SPX': {'type': 'us_stock', 'yahoo': 'SPY'},
+        '^GSPC': {'type': 'us_stock', 'yahoo': 'SPY'},
         'SPY': {'type': 'us_stock', 'yahoo': 'SPY'},
         'AAPL': {'type': 'us_stock', 'yahoo': 'AAPL'},
         'MSFT': {'type': 'us_stock', 'yahoo': 'MSFT'},
+        'NVDA': {'type': 'us_stock', 'yahoo': 'NVDA'},
+        'GOOGL': {'type': 'us_stock', 'yahoo': 'GOOGL'},
+        'TSLA': {'type': 'us_stock', 'yahoo': 'TSLA'},
+        # A股
+        'sz.399300': {'type': 'a_stock', 'akshare': 'sz399300'},
+        'sh.000300': {'type': 'a_stock', 'akshare': 'sz399300'},
+        'sz.399006': {'type': 'a_stock', 'akshare': 'sz399006'},
     }
     
     # 获取真实数据
@@ -125,17 +134,46 @@ def run_enhanced_backtest():
             
         elif cfg.get('type') == 'us_stock':
             try:
-                import yfinance as yf
-                ticker = yf.Ticker(cfg['yahoo'])
-                hist = ticker.history(start=start_date, end=end_date)
-                for idx, row in hist.iterrows():
-                    real_prices.append({
-                        'date': idx.strftime('%Y-%m-%d'),
-                        'close': row['Close'], 'high': row['High'], 'low': row['Low'], 'open': row['Open']
-                    })
-                data_source = f"Yahoo Finance ({symbol})"
-            except:
-                pass
+                # Polygon.io 美股数据 (免费API)
+                import requests
+                POLYGON_KEY = 'pnj9b5RN8Q_Sc_dcBsS9p7K_IUe9VMqR'
+                
+                polygon_symbol = cfg.get('yahoo')  # 使用 yahoo 字段存储的 symbol
+                url = f'https://api.polygon.io/v2/aggs/ticker/{polygon_symbol}/range/1/day/{start_date}/{end_date}?adjusted=true&sort=asc&limit=5000&apiKey={POLYGON_KEY}'
+                
+                resp = requests.get(url, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    results = data.get('results', [])
+                    for r in results:
+                        real_prices.append({
+                            'date': datetime.fromtimestamp(r['t']/1000).strftime('%Y-%m-%d'),
+                            'close': r['c'], 'high': r['h'], 'low': r['l'], 'open': r['o']
+                        })
+                    data_source = f"Polygon ({symbol})"
+            except Exception as e:
+                print(f"Polygon error: {e}")
+                
+        elif cfg.get('type') == 'a_stock':
+            # A股数据 - 使用akshare
+            try:
+                import akshare as ak
+                import pandas as pd
+                
+                akshare_symbol = cfg.get('akshare')
+                if akshare_symbol:
+                    df = ak.stock_zh_index_daily(symbol=akshare_symbol)
+                    df['date'] = pd.to_datetime(df['date'])
+                    df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+                    df = df.sort_values('date')
+                    for _, row in df.iterrows():
+                        real_prices.append({
+                            'date': row['date'].strftime('%Y-%m-%d'),
+                            'close': row['close'], 'high': row['high'], 'low': row['low'], 'open': row['open']
+                        })
+                    data_source = f"Akshare ({symbol})"
+            except Exception as e:
+                print(f"Akshare error: {e}")
     except Exception as e:
         print(f"数据获取失败: {e}")
     
