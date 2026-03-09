@@ -379,7 +379,7 @@ function DashboardPage({ lang, currentAccount, onAccountChange }) {
 // Strategies Page
 function StrategiesPage({ lang }) {
   const t = translations[lang];
-  const [strategies] = useState([
+  const [localStrategies] = useState([
     { id: 1, name: "RSI Multi-Factor", type: "趋势", returns: 25.0, maxDD: -8.5, sharpe: 1.42, trades: 156, status: "active" },
     { id: 2, name: "MACD Trend", type: "趋势", returns: 18.5, maxDD: -12.3, sharpe: 1.15, trades: 89, status: "inactive" },
     { id: 3, name: "Bollinger Band", type: "均值回归", returns: 12.3, maxDD: -15.2, sharpe: 0.95, trades: 234, status: "inactive" },
@@ -392,7 +392,7 @@ function StrategiesPage({ lang }) {
         <Button variant="primary" icon={Plus}>{t.add_strategy}</Button>
       </div>
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {strategies.map(s => (
+        {localStrategies.map(s => (
           <Card key={s.id} className="hover:border-zinc-700 transition">
             <CardHeader className="flex justify-between items-start">
               <div><CardTitle className="text-base">{s.name}</CardTitle><p className="text-xs text-zinc-500 mt-1">{s.type} • {s.trades} {t.trades}</p></div>

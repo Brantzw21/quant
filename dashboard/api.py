@@ -12,6 +12,24 @@ os.environ.setdefault('BINANCE_TESTNET', 'false')
 # 添加项目路径
 sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
+# 导入服务模块
+from dashboard.services import (
+    get_account as _get_account,
+    get_positions as _get_positions,
+    get_orders as _get_orders,
+    get_signals as _get_signals,
+    get_strategies as _get_strategies,
+    get_factors as _get_factors,
+    get_performance as _get_performance,
+    get_equity_history as _get_equity_history,
+    get_monte_carlo as _get_monte_carlo,
+    get_drawdown_analysis as _get_drawdown_analysis,
+    get_drawdown_history as _get_drawdown_history,
+    get_returns_distribution as _get_returns_distribution,
+    get_risk_status as _get_risk_status,
+    get_monthly_returns as _get_monthly_returns
+)
+
 # API配置
 API_KEY = os.environ.get('BINANCE_API_KEY', '')
 SECRET_KEY = os.environ.get('BINANCE_SECRET_KEY', '')
@@ -65,295 +83,11 @@ def load_json(fn, default=None):
     return default
 
 def get_account(account_type='binance_simulate'):
-    """获取账户数据
-    
-    Args:
-        account_type: 账户类型
-            - binance_simulate: 币安模拟盘 (测试网)
-            - binance_real: 币安实盘
-            - a_stock_simulate: A股模拟盘
-            - us_stock_simulate: 美股模拟盘
-    """
-    import random
-    import requests
-    
-    # 币安测试网API
-    TESTNET_API_KEY = '76shuJKddxV9x3LYMFVr92DrtAPoMYC4RVrCHFUEzj93I5Qbyl7SfDsqPOTR94hp'
-    TESTNET_SECRET = 'uYpLPQXHvtbMB2PNoEwOaUknEmXxFnEXwEo2WTQzOuLYJd3qeIs8TpsKXEJIHXUg'
-    
-    # 币安实盘API
-    REAL_API_KEY = 's6VdoVmiH7WLAgjMekASE6yXcwpzPlwTV9uryWGM2bOAKNU3ZWMMWr1T4cLfdY09'
-    REAL_SECRET = '7iIEE04m84Loi80ecixsk3z3mr47WXmFfRx3GsTi3q1XDjklSN8GMxMet1oRuRBX'
-    
-    # Polygon API
-    POLYGON_KEY = 'pnj9b5RN8Q_Sc_dcBsS9p7K_IUe9VMqR'
-    
-    if account_type == 'binance_simulate':
-        # 币安模拟盘 - 使用测试网API
-        try:
-            from binance.client import Client
-            client = Client(TESTNET_API_KEY, TESTNET_SECRET, testnet=True)
-            
-            account = client.futures_account()
-            balance = float(account['availableBalance'])
-            total_balance = float(account['totalWalletBalance'])
-            
-            # 获取持仓
-            positions = client.futures_position_information()
-            position = 0
-            unrealized_pnl = 0
-            
-            for p in positions:
-                if p['symbol'] == 'BTCUSDT' and float(p['positionAmt']) != 0:
-                    position = abs(float(p['positionAmt']))
-                    unrealized_pnl = float(p['unRealizedProfit'])
-                    break
-            
-            # 获取当前价格
-            ticker = client.futures_symbol_ticker(symbol='BTCUSDT')
-            current_price = float(ticker['price'])
-            
-            equity = total_balance
-            
-            return {
-                "account_type": "币安模拟盘",
-                "equity": round(equity, 2),
-                "balance": round(balance, 2),
-                "available": round(balance, 2),
-                "margin": round(position * current_price, 2),
-                "position": round(position, 6),
-                "current_price": current_price,
-                "all_assets": [
-                    {"asset": "USDT", "balance": round(balance, 2), "available": round(balance, 2), "usd_value": round(balance, 2)}
-                ],
-                "unrealized_pnl": round(unrealized_pnl, 2),
-                "total_pnl": round(unrealized_pnl, 2),
-                "pnl_percent": round(unrealized_pnl / balance * 100, 2) if balance > 0 else 0,
-                "realized_pnl": 0,
-                "source": "binance_testnet"
-            }
-        except Exception as e:
-            print(f"Binance testnet error: {e}")
-            # 回退到模拟数据
-            random.seed(42)
-            equity = 100000 + random.uniform(-5000, 8000)
-            return {
-                "account_type": "币安模拟盘",
-                "equity": round(equity, 2),
-                "balance": 100000,
-                "available": round(equity * 0.8, 2),
-                "margin": round(equity * 0.15, 2),
-                "position": 0.022,
-                "current_price": 68350,
-                "all_assets": [
-                    {"asset": "USDT", "balance": 80000, "available": 64000, "usd_value": 80000}
-                ],
-                "unrealized_pnl": round(random.uniform(-1000, 2000), 2),
-                "total_pnl": round(random.uniform(0, 5000), 2),
-                "pnl_percent": round(random.uniform(-2, 8), 2),
-                "realized_pnl": round(random.uniform(1000, 3000), 2),
-                "source": "binance_simulate_fallback"
-            }
-    
-    elif account_type == 'binance_real':
-        # 币安实盘 - 使用实盘API
-        try:
-            from binance.client import Client
-            client = Client(REAL_API_KEY, REAL_SECRET)
-            
-            account = client.futures_account()
-            balance = float(account['availableBalance'])
-            total_balance = float(account['totalWalletBalance'])
-            
-            # 获取持仓
-            positions = client.futures_position_information()
-            position = 0
-            unrealized_pnl = 0
-            
-            for p in positions:
-                if p['symbol'] == 'BTCUSDT' and float(p['positionAmt']) != 0:
-                    position = abs(float(p['positionAmt']))
-                    unrealized_pnl = float(p['unRealizedProfit'])
-                    break
-            
-            # 获取当前价格
-            ticker = client.futures_symbol_ticker(symbol='BTCUSDT')
-            current_price = float(ticker['price'])
-            
-            equity = total_balance
-            
-            return {
-                "account_type": "币安实盘",
-                "equity": round(equity, 2),
-                "balance": round(balance, 2),
-                "available": round(balance, 2),
-                "margin": round(position * current_price, 2),
-                "position": round(position, 6),
-                "current_price": current_price,
-                "all_assets": [
-                    {"asset": "USDT", "balance": round(balance, 2), "available": round(balance, 2), "usd_value": round(balance, 2)}
-                ],
-                "unrealized_pnl": round(unrealized_pnl, 2),
-                "total_pnl": round(unrealized_pnl, 2),
-                "pnl_percent": round(unrealized_pnl / balance * 100, 2) if balance > 0 else 0,
-                "realized_pnl": 0,
-                "source": "binance_real"
-            }
-        except Exception as e:
-            print(f"Binance real error: {e}")
-            return {"error": str(e), "account_type": "币安实盘", "source": "error"}
-    
-    elif account_type == 'a_stock_simulate':
-        # A股模拟盘 - 使用Akshare获取真实数据
-        INITIAL_CAPITAL = 10000  # 初始资金 10000元
-        
-        try:
-            import akshare as ak
-            import pandas as pd
-            
-            # 获取沪深300指数数据
-            df = ak.stock_zh_index_daily(symbol='sz399300')
-            if df is not None and len(df) > 0:
-                latest = df.iloc[-1]
-                current_price = latest['close']  # 指数点位，约4000+
-                
-                # 初始资金10000元，空仓
-                equity = INITIAL_CAPITAL
-                
-                return {
-                    "account_type": "A股模拟盘",
-                    "equity": round(equity, 2),
-                    "balance": INITIAL_CAPITAL,
-                    "available": round(equity, 2),
-                    "margin": 0,
-                    "position": 0,
-                    "avg_price": 0,
-                    "current_price": round(current_price, 2),
-                    "all_assets": [
-                        {"asset": "人民币", "balance": INITIAL_CAPITAL, "available": INITIAL_CAPITAL, "usd_value": round(INITIAL_CAPITAL / 7.2, 2)}
-                    ],
-                    "unrealized_pnl": 0,
-                    "total_pnl": 0,
-                    "pnl_percent": 0,
-                    "realized_pnl": 0,
-                    "source": "akshare"
-                }
-        except Exception as e:
-            print(f"A-share error: {e}")
-        
-        # 回退到模拟数据
-        return {
-            "account_type": "A股模拟盘",
-            "equity": INITIAL_CAPITAL,
-            "balance": INITIAL_CAPITAL,
-            "available": INITIAL_CAPITAL,
-            "margin": 0,
-            "position": 0,
-            "avg_price": 0,
-            "current_price": 0,
-            "all_assets": [
-                {"asset": "人民币", "balance": INITIAL_CAPITAL, "available": INITIAL_CAPITAL, "usd_value": round(INITIAL_CAPITAL / 7.2, 2)}
-            ],
-            "unrealized_pnl": 0,
-            "total_pnl": 0,
-            "pnl_percent": 0,
-            "realized_pnl": 0,
-            "source": "a_stock_simulate"
-        }
-    
-    elif account_type == 'us_stock_simulate':
-        # 美股模拟盘 - 使用Polygon获取真实数据
-        INITIAL_CAPITAL_USD = 1500  # 初始资金 1500美元
-        
-        try:
-            # 获取SPY数据
-            url = f'https://api.polygon.io/v2/aggs/ticker/SPY/range/1/day/2025-01-01/2025-12-31?adjusted=true&sort=desc&limit=1&apiKey={POLYGON_KEY}'
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                results = data.get('results', [])
-                if results:
-                    current_price = results[0]['c']
-                    
-                    # 初始资金1500美元，空仓
-                    equity = INITIAL_CAPITAL_USD
-                    
-                    return {
-                        "account_type": "美股模拟盘",
-                        "equity": round(equity, 2),
-                        "balance": INITIAL_CAPITAL_USD,
-                        "available": round(equity, 2),
-                        "margin": 0,
-                        "position": 0,
-                        "avg_price": 0,
-                        "current_price": round(current_price, 2),
-                        "all_assets": [
-                            {"asset": "USD", "balance": INITIAL_CAPITAL_USD, "available": INITIAL_CAPITAL_USD, "usd_value": INITIAL_CAPITAL_USD}
-                        ],
-                        "unrealized_pnl": 0,
-                        "total_pnl": 0,
-                        "pnl_percent": 0,
-                        "realized_pnl": 0,
-                        "source": "polygon"
-                    }
-        except Exception as e:
-            print(f"US stock error: {e}")
-        
-        # 回退到模拟数据
-        return {
-            "account_type": "美股模拟盘",
-            "equity": INITIAL_CAPITAL_USD,
-            "balance": INITIAL_CAPITAL_USD,
-            "available": INITIAL_CAPITAL_USD,
-            "margin": 0,
-            "position": 0,
-            "avg_price": 0,
-            "current_price": 0,
-            "all_assets": [
-                {"asset": "USD", "balance": INITIAL_CAPITAL_USD, "available": INITIAL_CAPITAL_USD, "usd_value": INITIAL_CAPITAL_USD}
-            ],
-            "unrealized_pnl": 0,
-            "total_pnl": 0,
-            "pnl_percent": 0,
-            "realized_pnl": 0,
-            "source": "us_stock_simulate"
-        }
-    
-    else:
-        # 默认
-        return {"account_type": "未知", "equity": 0, "source": "default"}
-
+    """获取账户数据 - 委托给服务层"""
+    return _get_account(account_type)
 def get_positions(account_type='binance_simulate'):
-    """获取持仓数据"""
-    import random
-    
-    if account_type == 'binance_simulate':
-        # 币安模拟盘
-        random.seed(42)
-        return [
-            {"symbol": "BTCUSDT", "side": "long", "qty": 0.5, "entryPrice": 65000, "currentPrice": 68350, "pnl": round(random.uniform(1000, 2000), 2), "pnlPercent": round(random.uniform(3, 6), 2)},
-            {"symbol": "ETHUSDT", "side": "long", "qty": 2.0, "entryPrice": 3200, "currentPrice": 3450, "pnl": round(random.uniform(300, 600), 2), "pnlPercent": round(random.uniform(4, 8), 2)}
-        ]
-    
-    elif account_type == 'a_stock_simulate':
-        # A股模拟盘
-        random.seed(123)
-        return [
-            {"symbol": "510300", "name": "沪深300ETF", "side": "long", "qty": 10000, "entryPrice": 3.85, "currentPrice": 3.92, "pnl": round(random.uniform(500, 1000), 2), "pnlPercent": round(random.uniform(1.3, 2.5), 2)},
-            {"symbol": "159919", "name": "券商ETF", "side": "long", "qty": 5000, "entryPrice": 1.25, "currentPrice": 1.28, "pnl": round(random.uniform(100, 250), 2), "pnlPercent": round(random.uniform(1.6, 4), 2)}
-        ]
-    
-    elif account_type == 'us_stock_simulate':
-        # 美股模拟盘
-        random.seed(456)
-        return [
-            {"symbol": "SPY", "name": "SPY ETF", "side": "long", "qty": 50, "entryPrice": 580, "currentPrice": 595, "pnl": round(random.uniform(500, 1000), 2), "pnlPercent": round(random.uniform(1.7, 3.4), 2)},
-            {"symbol": "AAPL", "name": "苹果", "side": "long", "qty": 100, "entryPrice": 230, "currentPrice": 245, "pnl": round(random.uniform(1200, 1800), 2), "pnlPercent": round(random.uniform(5.2, 7.8), 2)}
-        ]
-    
-    else:
-        # 默认返回空持仓
-        return []
+    """获取持仓数据 - 委托给服务层"""
+    return _get_positions(account_type)
 
 def get_orders():
     trades = load_json(TRADES_FILE, [])
@@ -366,15 +100,16 @@ def get_orders():
             for i,t in enumerate(trades[-20:])]
 
 def get_strategies():
-    return [
-        {"id":1,"name":"RSI Multi-Factor","type":"趋势","params":{"rsi_period":21,"oversold":25,"overbought":75},
-         "returns":25.0,"maxDD":-8.5,"sharpe":1.42,"trades":156,"status":"active","mode":"实盘"},
-        {"id":2,"name":"MACD Trend","type":"趋势","params":{"fast":12,"slow":26},
-         "returns":18.5,"maxDD":-12.3,"sharpe":1.15,"trades":89,"status":"inactive"},
-        {"id":3,"name":"Bollinger Band","type":"均值回归","params":{"period":20},
-         "returns":12.3,"maxDD":-15.2,"sharpe":0.95,"trades":234,"status":"inactive"},
-    ]
+    """获取策略列表 - 委托给服务层"""
+    return _get_strategies()
 
+def get_factors():
+    """获取因子数据 - 委托给服务层"""
+    return _get_factors()
+
+def get_performance():
+    """获取绩效数据 - 委托给服务层"""
+    return _get_performance()
 def get_factors():
     return {"动量因子":[{"name":"momentum","desc":"过去N天收益率","params":{"period":20}}],
              "波动率因子":[{"name":"volatility","desc":"收益率标准差年化","params":{"period":20}}],
@@ -435,13 +170,16 @@ def get_performance():
             "total_trades": 156, "avg_win": 3.2, "avg_loss": -1.8, "kelly_criterion": 35, "cagr": 25.0}
 
 def get_monte_carlo():
-    return {"percentiles":{"p10":85000,"p25":105000,"p50":125000,"p75":150000,"p90":180000},
-            "probabilities":{"bust_probability":5.2,"goal_100k":45.0}}
+    """蒙特卡洛模拟 - 委托给服务层"""
+    return _get_monte_carlo()
 
 def get_drawdown_analysis():
-    return {"current_drawdown":3.5,"max_drawdown":-8.5,"avg_drawdown":4.2,"time_in_drawdown":35}
+    """回撤分析 - 委托给服务层"""
+    return _get_drawdown_analysis()
 
 def get_drawdown_history():
+    """回撤历史 - 委托给服务层"""
+    return _get_drawdown_history()
     # 生成回撤历史数据
     dd = 0
     history = []
@@ -452,13 +190,24 @@ def get_drawdown_history():
     return history
 
 def get_returns_distribution():
-    # 收益分布直方图
-    returns = []
-    for _ in range(100):
-        r = random.gauss(0.5, 2.5)  # 均值0.5%，标准差2.5%
-        returns.append(round(r, 2))
-    # 分桶
-    buckets = {"<-5%":0,"-5~-3%":0,"-3~-1%":0,"-1~1%":0,"1~3%":0,"3~5%":0,">5%":0}
+    """收益分布 - 委托给服务层"""
+    return _get_returns_distribution()
+
+def get_risk_status():
+    """风险状态 - 委托给服务层"""
+    return _get_risk_status()
+
+def get_equity_history():
+    """权益历史 - 委托给服务层"""
+    return _get_equity_history()
+
+def get_signals():
+    """信号 - 委托给服务层"""
+    return _get_signals()
+
+def get_monthly_returns():
+    """月度收益 - 委托给服务层"""
+    return _get_monthly_returns()
     for r in returns:
         if r < -5: buckets["<-5%"] += 1
         elif r < -3: buckets["-5~-3%"] += 1
