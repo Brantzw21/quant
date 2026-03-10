@@ -4,6 +4,9 @@ import TradingViewChart from "./components/TradingViewChart";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ComposedChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, TrendingDown, Target, Activity, Shield, Clock, Play, Square, Globe, Zap, Wallet, Briefcase, Plus, Minus, Edit3, Copy, RefreshCw, PlayCircle, Bell } from "lucide-react";
 
+// 确保数据是数组
+const ensureArray = (v) => Array.isArray(v) ? v : v ? [v] : [];
+
 const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#a855f7", "#ec4899", "#06b6d4"];
 
 const translations = {
@@ -124,20 +127,20 @@ function DashboardPage({ lang, currentAccount, onAccountChange }) {
       fetch('/api/monthly').then(r => r.json()),
       fetch('/api/strategies').then(r => r.json()),
     ]).then(([acc, pos, ord, trd, eq, perf, lg, sig, rs, dd, rd, mon, strats]) => {
-      setAccount(acc);
-      setPositions(pos);
-      setOrders(ord);
-      setTrades(trd);
-      setEquityData(eq);
-      setPerformance(perf);
-      setLogs(lg);
-      setSignal(sig);
-      setRisk(rs);
-      setDrawdownData(dd);
-      setReturnsDist(rd);
-      setMonthlyData(mon);
-      setStrategies(strats);
-      if (strats.length > 0 && !currentStrategy) setCurrentStrategy(strats[0]);
+      setAccount(acc || {});
+      setPositions(ensureArray(pos));
+      setOrders(ensureArray(ord));
+      setTrades(ensureArray(trd));
+      setEquityData(ensureArray(eq));
+      setPerformance(perf || {});
+      setLogs(ensureArray(lg));
+      setSignal(sig || {});
+      setRisk(rs || {});
+      setDrawdownData(ensureArray(dd));
+      setReturnsDist(ensureArray(rd));
+      setMonthlyData(ensureArray(mon));
+      setStrategies(ensureArray(strats));
+      if (strats?.length > 0 && !currentStrategy) setCurrentStrategy(strats[0]);
       setLoading(false);
     }).catch(() => setLoading(false));
   };
@@ -238,7 +241,7 @@ function DashboardPage({ lang, currentAccount, onAccountChange }) {
             <ResponsiveContainer width="100%" height={150}>
               <AreaChart data={drawdownData}>
                 <defs><linearGradient id="ddGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/><stop offset="95%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs>
-                <XAxis dataKey="day" stroke="#52525b" fontSize={10} />
+                <XAxis dataKey="date" stroke="#52525b" fontSize={10} />
                 <YAxis stroke="#52525b" fontSize={10} domain={['dataMin - 5', 0]} />
                 <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '8px' }} formatter={v => [`${v}%`, 'DD']} />
                 <Area type="monotone" dataKey="drawdown" stroke="#ef4444" strokeWidth={2} fill="url(#ddGrad)" />
@@ -288,11 +291,11 @@ function DashboardPage({ lang, currentAccount, onAccountChange }) {
                   {positions.map((p, i) => (
                     <tr key={i} className="border-b border-zinc-800/50">
                       <td className="py-2 px-4 font-medium">{p.symbol}</td>
-                      <td className="py-2"><Badge variant={p.side === "long" ? "success" : "danger"}>{p.side.toUpperCase()}</Badge></td>
-                      <td className="py-2 text-right">{p.qty}</td>
-                      <td className="py-2 text-right">${p.entryPrice?.toLocaleString()}</td>
-                      <td className="py-2 text-right">${p.currentPrice?.toLocaleString()}</td>
-                      <td className={`py-2 text-right ${p.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>${p.pnl?.toFixed(2)} ({p.pnlPercent?.toFixed(2)}%)</td>
+                      <td className="py-2"><Badge variant={(p.side || 'long').toLowerCase() === "long" ? "success" : "danger"}>{(p.side || 'LONG').toUpperCase()}</Badge></td>
+                      <td className="py-2 text-right">{p.position || p.qty || 0}</td>
+                      <td className="py-2 text-right">${p.entry_price || p.entryPrice || 0}</td>
+                      <td className="py-2 text-right">${p.current_price || p.currentPrice || 0}</td>
+                      <td className={`py-2 text-right ${(p.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>${p.pnl?.toFixed(2) || 0} ({(p.pnl_percent || p.pnlPercent || 0).toFixed(2)}%)</td>
                     </tr>
                   ))}
                 </tbody>
@@ -309,7 +312,7 @@ function DashboardPage({ lang, currentAccount, onAccountChange }) {
           <CardContent>
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
-                <Pie data={positions.map((p, i) => ({ name: p.symbol, value: p.qty * p.currentPrice, color: COLORS[i % COLORS.length] }))} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" nameKey="name">
+                <Pie data={positions.map((p, i) => ({ name: p.symbol, value: (p.position || p.qty || 0) * (p.current_price || p.currentPrice || 0), color: COLORS[i % COLORS.length] }))} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" nameKey="name">
                   {positions.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '8px' }} formatter={v => `$${v?.toLocaleString()}`} />

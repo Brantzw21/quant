@@ -133,9 +133,16 @@ def get_returns_distribution(bins: int = 20) -> Dict:
     
     hist, edges = np.histogram(returns, bins=bins)
     
+    # 转换为前端需要的格式
+    ranges = []
+    for i in range(len(edges) - 1):
+        ranges.append(f"{edges[i]*100:.1f}~{edges[i+1]*100:.1f}%")
+    
     return {
         "histogram": hist.tolist(),
         "edges": edges.tolist(),
+        "range": ranges,
+        "count": hist.tolist(),
         "mean": round(np.mean(returns) * 100, 4),
         "std": round(np.std(returns) * 100, 4),
         "skewness": round(random.uniform(-0.5, 0.5), 2),
