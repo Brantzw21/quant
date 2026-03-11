@@ -1,123 +1,211 @@
-// 策略管理组件
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
+import { Save, RefreshCw, Play, Settings } from "lucide-react";
 
-export default function StrategyManager({ lang = 'zh' }) {
+const StrategyManager = () => {
   const [strategies, setStrategies] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [selectedStrategy, setSelectedStrategy] = useState(null);
   const [params, setParams] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  const t = {
-    zh: {
-      title: '策略管理',
-      name: '策略名称',
-      params: '参数',
-      edit: '编辑',
-      backtest: '回测',
-      deploy: '部署',
-      save: '保存',
-      cancel: '取消'
-    },
-    en: {
-      title: 'Strategy Manager',
-      name: 'Name',
-      params: 'Parameters',
-      edit: 'Edit',
-      backtest: 'Backtest',
-      deploy: 'Deploy',
-      save: 'Save',
-      cancel: 'Cancel'
+  const fetchStrategies = async () => {
+    try {
+      const res = await fetch('/api/strategies');
+      const data = await res.json();
+      setStrategies(data || []);
+      
+      if (data?.length > 0 && !selectedStrategy) {
+        setSelectedStrategy(data[0]);
+        setParams(data[0].params || {});
+      }
+    } catch (e) {
+      console.error('Failed to fetch strategies:', e);
     }
-  }[lang] || { zh: {} };
+    setLoading(false);
+  };
 
   useEffect(() => {
-    // 获取策略列表
-    fetch('/api/strategies')
-      .then(r => r.json())
-      .then(data => {
-        setStrategies(data || []);
-        if (data && data.length > 0) {
-          setSelected(data[0]);
-          setParams(data[0]?.params || {});
-        }
-      });
+    fetchStrategies();
   }, []);
 
-  const handleSave = () => {
-    // 保存策略参数
-    console.log('Save params:', params);
+  const saveParams = async () => {
+    try {
+      await fetch('/api/strategy/params', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          strategyId: selectedStrategy?.id,
+          params: params
+        })
+      });
+      alert('参数已保存');
+    } catch (e) {
+      console.error('Failed to save params:', e);
+    }
   };
+
+  const toggleStrategy = async (strategy) => {
+    try {
+      await fetch('/api/strategy/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          strategyId: strategy.id,
+          enabled: !strategy.enabled 
+        })
+      });
+      fetchStrategies();
+    } catch (e) {
+      console.error('Failed to toggle strategy:', e);
+    }
+  };
+
+  // 策略参数配置模板
+  const paramTemplates = {
+    rsi: [
+      { key: 'rsi_period', label: 'RSI周期', type: 'number', min: 5, max: 30 },
+      { key: 'rsi_overbought', label: 'RSI超买', type: 'number', min: 60, max: 90 },
+      { key: 'rsi_oversold', label: 'RSI超卖', type: 'number', min: 10, max: 40 },
+    ],
+    ma: [
+      { key: 'ma_short', label: '短期均线', type: 'number', min: 5, max: 30 },
+      { key: 'ma_long', label: '长期均线', type: 'number', min: 20, max: 100 },
+    ],
+    macd: [
+      { key: 'macd_fast', label: '快线周期', type: 'number', min: 5, max: 20 },
+      { key: 'macd_slow', label: '慢线周期', type: 'number', min: 20, max: 50 },
+      { key: 'macd_signal', label: '信号线', type: 'number', min: 5, max: 15 },
+    ],
+    boll: [
+      { key: 'boll_period', label: '布林周期', type: 'number', min: 10, max: 30 },
+      { key: 'boll_std', label: '标准差倍数', type: 'number', min: 1.5, max: 3 },
+    ]
+  };
+
+  if (loading) {
+    return <div className="text-center py-8 text-zinc-400">加载中...</div>;
+  }
 
   return (
     <div className="space-y-4">
       {/* 策略列表 */}
-      <div className="bg-zinc-900 rounded-lg p-4">
-        <h3 className="text-lg font-medium mb-4">{t.title}</h3>
-        
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {strategies.map(s => (
-            <button
-              key={s.id}
-              onClick={() => { setSelected(s); setParams(s.params || {}); }}
-              className={`p-3 rounded-lg text-left transition ${
-                selected?.id === s.id 
-                  ? 'bg-cyan-600 text-white' 
-                  : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-              }`}
-            >
-              <div className="font-medium">{s.name}</div>
-              <div className="text-xs opacity-70">{s.type || 'RSI'}</div>
-            </button>
-          ))}
-        </div>
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {strategies.map(strategy => (
+          <div 
+            key={strategy.id}
+            onClick={() => {
+              setSelectedStrategy(strategy);
+              setParams(strategy.params || {});
+            }}
+            className={`p-4 rounded-lg border cursor-pointer transition ${
+              selectedStrategy?.id === strategy.id 
+                ? 'border-cyan-500 bg-cyan-900/20' 
+                : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
+            }`}
+          >
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <div className="font-bold">{strategy.name}</div>
+                <div className="text-xs text-zinc-400">{strategy.description || '暂无描述'}</div>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleStrategy(strategy);
+                }}
+                className={`px-2 py-1 text-xs rounded ${
+                  strategy.enabled 
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-zinc-600 text-zinc-300'
+                }`}
+              >
+                {strategy.enabled ? '启用' : '停用'}
+              </button>
+            </div>
+            
+            <div className="flex gap-4 text-xs text-zinc-500 mt-2">
+              <span>胜率: {strategy.winRate || '-'}</span>
+              <span>夏普: {strategy.sharpe || '-'}</span>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* 策略参数编辑 */}
-      {selected && (
-        <div className="bg-zinc-900 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-zinc-400 mb-3">
-            {selected.name} - {t.params}
-          </h3>
+      {/* 参数配置 */}
+      {selectedStrategy && (
+        <div className="bg-zinc-800 rounded-lg p-4">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold">参数配置: {selectedStrategy.name}</h3>
+            <button 
+              onClick={saveParams}
+              className="flex items-center gap-2 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 rounded text-sm"
+            >
+              <Save size={14} /> 保存
+            </button>
+          </div>
           
-          <div className="grid grid-cols-2 gap-4">
-            {Object.entries(params).map(([key, value]) => (
-              <div key={key}>
-                <label className="text-xs text-zinc-500 block mb-1">{key}</label>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(paramTemplates[selectedStrategy.key] || []).map(p => (
+              <div key={p.key}>
+                <label className="block text-xs text-zinc-400 mb-1">{p.label}</label>
                 <input
-                  type="number"
-                  value={value}
-                  onChange={(e) => setParams({...params, [key]: Number(e.target.value)})}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm"
+                  type={p.type}
+                  className="w-full bg-zinc-700 border border-zinc-600 rounded px-3 py-2 text-sm"
+                  value={params[p.key] || ''}
+                  onChange={e => setParams({...params, [p.key]: Number(e.target.value)})}
                 />
               </div>
             ))}
           </div>
 
-          <div className="flex gap-2 mt-4">
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-cyan-600 rounded-lg text-sm hover:bg-cyan-500"
-            >
-              {t.save}
-            </button>
-            <button
-              onClick={() => setSelected(null)}
-              className="px-4 py-2 bg-zinc-700 rounded-lg text-sm"
-            >
-              {t.cancel}
-            </button>
+          {/* 风控参数 */}
+          <div className="mt-4 pt-4 border-t border-zinc-700">
+            <h4 className="text-sm font-bold mb-3">风控参数</h4>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">止损 (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  className="w-full bg-zinc-700 border border-zinc-600 rounded px-3 py-2 text-sm"
+                  value={params.stop_loss || 3}
+                  onChange={e => setParams({...params, stop_loss: Number(e.target.value)})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">止盈 (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  className="w-full bg-zinc-700 border border-zinc-600 rounded px-3 py-2 text-sm"
+                  value={params.take_profit || 8}
+                  onChange={e => setParams({...params, take_profit: Number(e.target.value)})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">仓位比例 (%)</label>
+                <input
+                  type="number"
+                  step="1"
+                  className="w-full bg-zinc-700 border border-zinc-600 rounded px-3 py-2 text-sm"
+                  value={params.position_size || 50}
+                  onChange={e => setParams({...params, position_size: Number(e.target.value)})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">最大持仓</label>
+                <input
+                  type="number"
+                  className="w-full bg-zinc-700 border border-zinc-600 rounded px-3 py-2 text-sm"
+                  value={params.max_positions || 3}
+                  onChange={e => setParams({...params, max_positions: Number(e.target.value)})}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
-
-      {/* 操作按钮 */}
-      <div className="flex gap-2">
-        <button className="flex-1 py-3 bg-zinc-800 rounded-lg hover:bg-zinc-700">
-          {t.backtest}
-        </button>
-        <button className="flex-1 py-3 bg-green-600 rounded-lg hover:bg-green-500">
-          {t.deploy}
-        </button>
-      </div>
     </div>
   );
-}
+};
+
+export default StrategyManager;

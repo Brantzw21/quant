@@ -4,6 +4,8 @@ import TradingViewChart from "./components/TradingViewChart";
 import MultiMarketPanel from "./components/MultiMarketPanel";
 import SignalPanel from "./components/SignalPanel";
 import SystemMonitorPanel from "./components/SystemMonitorPanel";
+import BacktestEnhanced from "./components/BacktestEnhanced";
+import StrategyManager from "./components/StrategyManager";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ComposedChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, TrendingDown, Target, Activity, Shield, Clock, Play, Square, Globe, Zap, Wallet, Briefcase, Plus, Minus, Edit3, Copy, RefreshCw, PlayCircle, Bell } from "lucide-react";
 
@@ -385,11 +387,16 @@ function DashboardPage({ lang, currentAccount, onAccountChange }) {
 // Strategies Page
 function StrategiesPage({ lang }) {
   const t = translations[lang];
-  const [localStrategies] = useState([
-    { id: 1, name: "RSI Multi-Factor", type: "趋势", returns: 25.0, maxDD: -8.5, sharpe: 1.42, trades: 156, status: "active" },
-    { id: 2, name: "MACD Trend", type: "趋势", returns: 18.5, maxDD: -12.3, sharpe: 1.15, trades: 89, status: "inactive" },
-    { id: 3, name: "Bollinger Band", type: "均值回归", returns: 12.3, maxDD: -15.2, sharpe: 0.95, trades: 234, status: "inactive" },
-  ]);
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold">{t.strategy_list}</h2>
+      </div>
+      <StrategyManager />
+    </div>
+  );
+}
 
   return (
     <div className="space-y-4">
@@ -778,25 +785,14 @@ function WalletsPage({ lang }) {
 // Backtest Page (V10 完整版)
 function BacktestPage({ lang }) {
   const t = translations[lang];
-  const [running, setRunning] = useState(false);
-  const [results, setResults] = useState(null);
-  const [optimizeResults, setOptimizeResults] = useState(null);
-  const [wfResults, setWfResults] = useState(null);
-  const [gatekeeper, setGatekeeper] = useState(null);
-  const [activeTab, setActiveTab] = useState("backtest");
-  const [strategyList, setStrategyList] = useState([]);
-  const [klineData, setKlineData] = useState([])
-  const [params, setParams] = useState({ 
-    market: "crypto",
-    symbol: "BTCUSDT",
-    strategy: "RSI Multi-Factor", 
-    start_date: "2024-01-01", 
-    end_date: "2025-12-31", 
-    initial_capital: 100000,
-    fee: 0.001,
-    slippage: 5,
-    seed: 42
-  });
+  
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-bold">{t.backtest}</h2>
+      <BacktestEnhanced />
+    </div>
+  );
+}
 
   // 市场选项
   const marketOptions = {
