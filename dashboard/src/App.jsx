@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import RiskIndicator from "./components/RiskIndicator";
 import TradingViewChart from "./components/TradingViewChart";
+import MultiMarketPanel from "./components/MultiMarketPanel";
+import SignalPanel from "./components/SignalPanel";
+import SystemMonitorPanel from "./components/SystemMonitorPanel";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ComposedChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, TrendingDown, Target, Activity, Shield, Clock, Play, Square, Globe, Zap, Wallet, Briefcase, Plus, Minus, Edit3, Copy, RefreshCw, PlayCircle, Bell } from "lucide-react";
 
@@ -558,6 +561,15 @@ function MonitorPage({ lang }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* 多市场监控 */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <MultiMarketPanel />
+        <SignalPanel />
+      </div>
+
+      {/* 系统监控面板 */}
+      <SystemMonitorPanel />
     </div>
   );
 }
