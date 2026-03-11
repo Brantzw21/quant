@@ -1,308 +1,323 @@
+#!/usr/bin/env python3
 """
-组合优化器 - Portfolio Optimizer
-=================================
-
-功能:
-- 多策略组合
-- 权重优化
-- 风险平价
-- 均值方差优化
-
-作者: AI量化系统
+组合优化器
+基于均值方差、风险平价、最小方差的组合优化
 """
+
+import sys
+import os
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 import numpy as np
 import pandas as pd
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
 from dataclasses import dataclass
+from scipy.optimize import minimize
 
 
 @dataclass
-class StrategyResult:
-    """策略结果"""
-    name: str
-    returns: List[float]
-    equity: List[float]
-    trades: int
+class Asset:
+    """资产"""
+    symbol: str
+    expected_return: float  # 预期收益率
+    volatility: float       # 波动率
+    correlation: Dict[str, float] = None  # 与其他资产的相关性
+    
+    def __post_init__(self):
+        if self.correlation is None:
+            self.correlation = {}
 
 
 class PortfolioOptimizer:
     """
     组合优化器
+    
+    方法:
+    - 均值方差 (Mean-Variance)
+    - 最小方差 (Minimum Variance)
+    - 最大夏普 (Maximum Sharpe)
+    - 风险平价 (Risk Parity)
     """
     
-    def __init__(self, risk_free_rate: float = 0.02):
+    def __init__(self, assets: List[Asset], risk_free_rate: float = 0.02):
+        self.assets = assets
         self.risk_free_rate = risk_free_rate
+        
+        # 构建协方差矩阵
+        self.cov_matrix = self._build_cov_matrix()
+        
+        # 构建相关矩阵
+        self.corr_matrix = self._build_corr_matrix()
     
-    def equal_weight(self, strategies: List[StrategyResult]) -> Dict[str, float]:
-        """等权组合"""
-        n = len(strategies)
-        return {s.name: 1.0/n for s in strategies}
+    def _build_cov_matrix(self) -> np.ndarray:
+        """构建协方差矩阵"""
+        n = len(self.assets)
+        cov = np.zeros((n, n))
+        
+        for i, a in enumerate(self.assets):
+            for j, b in enumerate(self.assets):
+                if i == j:
+                    cov[i, j] = a.volatility ** 2
+                else:
+                    # 协方差 = 相关性 * sigma_i * sigma_j
+                    corr = a.correlation.get(b.symbol, 0.3)  # 默认相关性0.3
+                    cov[i, j] = corr * a.volatility * b.volatility
+        
+        return cov
     
-    def risk_parity(self, strategies: List[StrategyResult]) -> Dict[str, float]:
-        """
-        风险平价组合
+    def _build_corr_matrix(self) -> np.ndarray:
+        """构建相关矩阵"""
+        n = len(self.assets)
+        corr = np.zeros((n, n))
         
-        原理: 各策略贡献相同风险
-        """
-        # 计算各策略波动率
-        volatilities = {}
-        for s in strategies:
-            if len(s.returns) > 1:
-                vol = np.std(s.returns) * np.sqrt(252)
-            else:
-                vol = 0.1
-            volatilities[s.name] = vol
+        for i, a in enumerate(self.assets):
+            for j, b in enumerate(self.assets):
+                if i == j:
+                    corr[i, j] = 1.0
+                else:
+                    corr[i, j] = a.correlation.get(b.symbol, 0.3)
         
-        # 波动率倒数作为权重
-        total_inv_vol = sum(1/v for v in volatilities.values() if v > 0)
-        
-        weights = {}
-        for name, vol in volatilities.items():
-            if vol > 0:
-                weights[name] = (1/vol) / total_inv_vol
-            else:
-                weights[name] = 0
-        
-        return weights
+        return corr
     
-    def mean_variance(self, strategies: List[StrategyResult], 
-                     target_return: float = None) -> Dict[str, float]:
-        """
-        均值方差优化 (Markowitz)
-        
-        原理: 最大化夏普比率
-        """
-        n = len(strategies)
-        
-        # 构建收益矩阵
-        returns_matrix = np.array([s.returns for s in strategies])
-        
-        # 期望收益
-        expected_returns = np.mean(returns_matrix, axis=1) * 252
-        
-        # 协方差矩阵
-        cov_matrix = np.cov(returns_matrix) * 252
-        
-        # 简化: 用波动率倒数
-        volatilities = np.array([np.std(s.returns) * np.sqrt(252) + 0.001 
-                               for s in strategies])
-        
-        # 风险平价作为近似
-        weights = 1 / volatilities
-        weights = weights / np.sum(weights)
-        
-        return {s.name: w for s, w in zip(strategies, weights)}
+    def portfolio_return(self, weights: np.ndarray) -> float:
+        """组合收益率"""
+        returns = np.array([a.expected_return for a in self.assets])
+        return np.dot(weights, returns)
     
-    def momentum_weighted(self, strategies: List[StrategyResult], 
-                       lookback: int = 60) -> Dict[str, float]:
-        """
-        动量加权
-        
-        原理: 近期表现好的权重高
-        """
-        weights = {}
-        
-        for s in strategies:
-            if len(s.returns) >= lookback:
-                # 近期收益
-                recent = s.returns[-lookback:]
-                momentum = np.mean(recent)
-            else:
-                momentum = 0
-            
-            # 用动量作为权重(正收益)
-            weights[s.name] = max(0, momentum)
-        
-        # 归一化
-        total = sum(weights.values())
-        if total > 0:
-            weights = {k: v/total for k, v in weights.items()}
-        else:
-            weights = self.equal_weight(strategies)
-        
-        return weights
+    def portfolio_volatility(self, weights: np.ndarray) -> float:
+        """组合波动率"""
+        return np.sqrt(np.dot(weights.T, np.dot(self.cov_matrix, weights)))
     
-    def inverse_vol_weighted(self, strategies: List[StrategyResult]) -> Dict[str, float]:
-        """
-        逆波动率加权
+    def portfolio_sharpe(self, weights: np.ndarray) -> float:
+        """组合        ret = self.portfolio_return夏普比率"""
+(weights)
+        vol = self.portfolio_volatility(weights)
         
-        原理: 波动率低的权重高
-        """
-        volatilities = {}
+        if vol == 0:
+            return 0
         
-        for s in strategies:
-            if len(s.returns) > 1:
-                vol = np.std(s.returns) * np.sqrt(252)
-            else:
-                vol = 0.1
-            volatilities[s.name] = vol
-        
-        # 逆波动率
-        inv_vol = {k: 1/v for k, v in volatilities.items()}
-        total = sum(inv_vol.values())
-        
-        weights = {k: v/total for k, v in inv_vol.items()}
-        
-        return weights
+        return (ret - self.risk_free_rate) / vol
     
-    def rank_weighted(self, strategies: List[StrategyResult]) -> Dict[str, float]:
+    def optimize_min_variance(self) -> Dict:
         """
-        排名加权
-        
-        原理: 按收益排名分配权重
+        最小方差组合
         """
-        # 计算各策略总收益
-        total_returns = {s.name: sum(s.returns) for s in strategies}
+        n = len(self.assets)
         
-        # 排序
-        sorted_strategies = sorted(total_returns.items(), 
-                                 key=lambda x: x[1], reverse=True)
+        # 目标函数: 组合方差
+        def objective(w):
+            return self.portfolio_volatility(w) ** 2
         
-        # 分配权重 (1/rank)
-        weights = {}
-        for i, (name, _) in enumerate(sorted_strategies):
-            weights[name] = 1.0 / (i + 1)
+        # 约束: 权重和为1
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
         
-        # 归一化
-        total = sum(weights.values())
-        weights = {k: v/total for k, v in weights.items()}
+        # 边界: 权重在0-1之间
+        bounds = tuple((0, 1) for _ in range(n))
         
-        return weights
-    
-    def optimize(self, strategies: List[StrategyResult], 
-               method: str = "risk_parity") -> Dict[str, float]:
-        """
-        优化组合权重
+        # 初始权重
+        x0 = np.array([1/n] * n)
         
-        Args:
-            strategies: 策略结果列表
-            method: 优化方法
-                - equal: 等权
-                - risk_parity: 风险平价
-                - mean_variance: 均值方差
-                - momentum: 动量加权
-                - inverse_vol: 逆波动率
-                - rank: 排名加权
+        # 优化
+        result = minimize(objective, x0, method='SLSQP', bounds=bounds, constraints=constraints)
         
-        Returns:
-            {策略名: 权重}
-        """
-        methods = {
-            "equal": self.equal_weight,
-            "risk_parity": self.risk_parity,
-            "mean_variance": self.mean_variance,
-            "momentum": self.momentum_weighted,
-            "inverse_vol": self.inverse_vol_weighted,
-            "rank": self.rank_weighted,
-        }
-        
-        if method not in methods:
-            method = "risk_parity"
-        
-        return methods[method](strategies)
-    
-    def evaluate_portfolio(self, strategies: List[StrategyResult],
-                          weights: Dict[str, float]) -> Dict:
-        """
-        评估组合表现
-        """
-        # 构建组合收益
-        portfolio_returns = []
-        
-        # 获取最大长度
-        max_len = max(len(s.returns) for s in strategies)
-        
-        for i in range(max_len):
-            port_ret = 0
-            for s in strategies:
-                if i < len(s.returns):
-                    port_ret += s.returns[i] * weights.get(s.name, 0)
-            portfolio_returns.append(port_ret)
-        
-        # 计算指标
-        total_return = sum(portfolio_returns)
-        
-        if len(portfolio_returns) > 1:
-            returns_arr = np.array(portfolio_returns)
-            volatility = np.std(returns_arr) * np.sqrt(252)
-            sharpe = (total_return - self.risk_free_rate) / volatility if volatility > 0 else 0
-            
-            # 最大回撤
-            equity = [1]
-            for r in portfolio_returns:
-                equity.append(equity[-1] * (1 + r))
-            
-            peak = equity[0]
-            max_dd = 0
-            for e in equity:
-                if e > peak: peak = e
-                dd = (peak - e) / peak
-                if dd > max_dd: max_dd = dd
-        else:
-            volatility = 0
-            sharpe = 0
-            max_dd = 0
+        weights = result.x
         
         return {
-            'total_return': total_return,
-            'volatility': volatility,
-            'sharpe_ratio': sharpe,
-            'max_drawdown': max_dd,
-            'weights': weights
+            'method': 'Minimum Variance',
+            'weights': {a.symbol: round(w, 4) for a, w in zip(self.assets, weights) if w > 0.001},
+            'expected_return': round(self.portfolio_return(weights), 4),
+            'volatility': round(self.portfolio_volatility(weights), 4),
+            'sharpe': round(self.portfolio_sharpe(weights), 3)
         }
-
-
-def compute_correlation(strategies: List[StrategyResult]) -> pd.DataFrame:
-    """
-    计算策略相关性矩阵
-    """
-    returns_dict = {}
     
-    for s in strategies:
-        returns_dict[s.name] = s.returns
+    def optimize_max_sharpe(self) -> Dict:
+        """
+        最大夏普组合
+        """
+        n = len(self.assets)
+        
+        # 目标函数: -夏普比率 (最小化)
+        def objective(w):
+            return -self.portfolio_sharpe(w)
+        
+        # 约束
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+        
+        # 边界
+        bounds = tuple((0, 1) for _ in range(n))
+        
+        # 初始权重
+        x0 = np.array([1/n] * n)
+        
+        # 优化
+        result = minimize(objective, x0, method='SLSQP', bounds=bounds, constraints=constraints)
+        
+        weights = result.x
+        
+        return {
+            'method': 'Maximum Sharpe',
+            'weights': {a.symbol: round(w, 4) for a, wassets, weights) in zip(self. if w > 0.001},
+            'expected_return': round(self.portfolio_return(weights), 4),
+            'volatility': round(self.portfolio_volatility(weights), 4),
+            'sharpe': round(self.portfolio_sharpe(weights), 3)
+        }
     
-    # 转为DataFrame
-    df = pd.DataFrame(returns_dict)
+    def optimize_mean_variance(self, target_return: float = None) -> Dict:
+        """
+        均值方差组合
+        """
+        n = len(self.assets)
+        
+        # 目标函数: 组合方差
+        def objective(w):
+            return self.portfolio_volatility(w) ** 2
+        
+        # 约束
+        constraints = [
+            {'type': 'eq', 'fun': lambda w: np.sum(w) - 1},
+        ]
+        
+        if target_return:
+            constraints.append({
+                'type': 'eq', 
+                'fun': lambda w: self.portfolio_return(w) - target_return
+            })
+        
+        # 边界
+        bounds = tuple((0, 1) for _ in range(n))
+        
+        # 初始权重
+        x0 = np.array([1/n] * n)
+        
+        # 优化
+        result = minimize(objective, x0, method='SLSQP', bounds=bounds, constraints=constraints)
+        
+        weights = result.x
+        
+        return {
+            'method': 'Mean-Variance',
+            'weights': {a.symbol: round(w, 4) for a, w in zip(self.assets, weights) if w > 0.001},
+            'expected_return': round(self.portfolio_return(weights), 4),
+            'volatility': round(self.portfolio_volatility(weights), 4),
+            'sharpe': round(self.portfolio_sharpe(weights), 3)
+        }
     
-    # 计算相关性
-    corr = df.corr()
+    def optimize_risk_parity(self) -> Dict:
+        """
+        风险平价组合
+        每个资产的边际风险贡献相等
+        """
+        n = len(self.assets)
+        
+        # 目标函数: 风险贡献方差
+        def objective(w):
+            vol = self.portfolio_volatility(w)
+            risk_contrib = w * (self.cov_matrix @ w) / vol
+            target_risk = vol / n
+            return np.sum((risk_contrib - target_risk) ** 2)
+        
+        # 约束
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+        
+        # 边界
+        bounds = tuple((0, 1) for _ in range(n))
+        
+        # 初始权重
+        x0 = np.array([1/n] * n)
+        
+        # 优化
+        result = minimize(objective, x0, method='SLSQP', bounds=bounds, constraints=constraints)
+        
+        weights = result.x
+        
+        return {
+            'method': 'Risk Parity',
+            'weights': {a.symbol: round(w, 4) for a, w in zip(self.assets, weights) if w > 0.001},
+            'expected_return': round(self.portfolio_return(weights), 4),
+            'volatility': round(self.portfolio_volatility(weights), 4),
+            'sharpe': round(self.portfolio_sharpe(weights), 3)
+        }
     
-    return corr
+    def get_efficient_frontier(self, n_points: int = 20) -> pd.DataFrame:
+        """获取有效前沿"""
+        # 获取收益率范围
+        returns = [a.expected_return for a in self.assets]
+        min_return = min(returns)
+        max_return = max(returns)
+        
+        results = []
+        
+        for target in np.linspace(min_return, max_return, n_points):
+            try:
+                opt = self.optimize_mean_variance(target_return=target)
+                results.append(opt)
+            except:
+                pass
+        
+        df = pd.DataFrame(results)
+        
+        return df
+    
+    def optimize_all(self) -> Dict:
+        """获取所有优化方法的结果"""
+        return {
+            'min_variance': self.optimize_min_variance(),
+            'max_sharpe': self.optimize_max_sharpe(),
+            'risk_parity': self.optimize_risk_parity(),
+            'equal_weight': self._equal_weight(),
+            'efficient_frontier': self.get_efficient_frontier().to_dict('records')
+        }
+    
+    def _equal_weight(self) -> Dict:
+        """等权组合"""
+        n = len(self.assets)
+        weights = np.array([1/n] * n)
+        
+        return {
+            'method': 'Equal Weight',
+            'weights': {a.symbol: round(1/n, 4) for a in self.assets},
+            'expected_return': round(self.portfolio_return(weights), 4),
+            'volatility': round(self.portfolio_volatility(weights), 4),
+            'sharpe': round(self.portfolio_sharpe(weights), 3)
+        }
 
 
 # ==================== 使用示例 ====================
 
 if __name__ == "__main__":
-    import random
+    print("=" * 50)
+    print("组合优化器")
+    print("=" * 50)
     
-    # 模拟策略结果
-    strategies = []
-    for name in ['策略A', '策略B', '策略C']:
-        returns = [random.uniform(-0.02, 0.03) for _ in range(100)]
-        equity = [100000]
-        for r in returns:
-            equity.append(equity[-1] * (1 + r))
-        
-        strategies.append(StrategyResult(
-            name=name,
-            returns=returns,
-            equity=equity[1:],
-            trades=random.randint(10, 30)
-        ))
+    # 定义资产
+    assets = [
+        Asset("BTC", expected_return=0.30, volatility=0.80, correlation={"ETH": 0.6}),
+        Asset("ETH", expected_return=0.20, volatility=0.60, correlation={"BTC": 0.6}),
+        Asset("SPY", expected_return=0.10, volatility=0.15, correlation={"BTC": 0.1, "ETH": 0.1}),
+        Asset("GLD", expected_return=0.05, volatility=0.10, correlation={"BTC": 0.0, "ETH": 0.0}),
+    ]
+    
+    # 创建优化器
+    optimizer = PortfolioOptimizer(assets, risk_free_rate=0.02)
     
     # 优化
-    optimizer = PortfolioOptimizer()
+    print("\n📊 最小方差组合:")
+    mv = optimizer.optimize_min_variance()
+    print(f"  权重: {mv['weights']}")
+    print(f"  预期收益: {mv['expected_return']:.1%}")
+    print(f"  波动率: {mv['volatility']:.1%}")
+    print(f"  夏普比率: {mv['sharpe']:.2f}")
     
-    print("组合优化结果:")
-    print("-" * 50)
+    print("\n📊 最大夏普组合:")
+    ms = optimizer.optimize_max_sharpe()
+    print(f"  权重: {ms['weights']}")
+    print(f"  预期收益: {ms['expected_return']:.1%}")
+    print(f"  波动率: {ms['volatility']:.1%}")
+    print(f"  夏普比率: {ms['sharpe']:.2f}")
     
-    for method in ['equal', 'risk_parity', 'inverse_vol', 'rank']:
-        weights = optimizer.optimize(strategies, method)
-        result = optimizer.evaluate_portfolio(strategies, weights)
-        
-        print(f"\n{method}:")
-        print(f"  权重: {weights}")
-        print(f"  收益: {result['total_return']:.2%}")
-        print(f"  夏普: {result['sharpe_ratio']:.2f}")
-        print(f"  回撤: {result['max_drawdown']:.2%}")
+    print("\n📊 风险平价组合:")
+    rp = optimizer.optimize_risk_parity()
+    print(f"  权重: {rp['weights']}")
+    print(f"  预期收益: {rp['expected_return']:.1%}")
+    print(f"  波动率: {rp['volatility']:.1%}")
+    print(f"  夏普比率: {rp['sharpe']:.2f}")
