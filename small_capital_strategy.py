@@ -26,17 +26,17 @@ class SmallCapitalStrategy:
         self.capital = capital
         
         # 安全的杠杆倍数
-        self.leverage = 2  # 只用2倍!
+        self.leverage = 5  # 5倍杠杆
         
-        # 每单金额 (只用5%的资金)
-        self.order_pct = 0.05  # 每次约3U
+        # 每单金额 (用10%的资金)
+        self.order_pct = 0.10  # 每次约6U
         self.order_amount = capital * self.order_pct
         
-        # 止损 (2%)
-        self.stop_loss = 0.02
+        # 止损 (3%)
+        self.stop_loss = 0.03
         
-        # 止盈 (4%)
-        self.take_profit = 0.04
+        # 止盈 (6%)
+        self.take_profit = 0.06
         
         # 策略
         self.grid_strategy = SmartGridStrategy(
