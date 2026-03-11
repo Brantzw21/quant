@@ -40,7 +40,7 @@ def save_state(state):
         json.dump(state, f, indent=2)
 
 
-def get_client(testnet=True):
+def get_client(testnet=False):
     """获取交易客户端"""
     from config import API_KEY, SECRET_KEY, TESTNET
     
@@ -163,7 +163,7 @@ def run():
     print("=" * 50)
     
     # 初始化客户端
-    client = get_client(testnet=True)  # 测试网
+    client = get_client(testnet=False)  # 实盘
     
     # 初始化策略
     strategy = SmallCapitalStrategy(CAPITAL)
