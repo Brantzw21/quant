@@ -89,8 +89,8 @@ class PortfolioOptimizer:
         return np.sqrt(np.dot(weights.T, np.dot(self.cov_matrix, weights)))
     
     def portfolio_sharpe(self, weights: np.ndarray) -> float:
-        """组合        ret = self.portfolio_return夏普比率"""
-(weights)
+        """组合夏普比率"""
+        ret = self.portfolio_return(weights)
         vol = self.portfolio_volatility(weights)
         
         if vol == 0:
@@ -156,7 +156,7 @@ class PortfolioOptimizer:
         
         return {
             'method': 'Maximum Sharpe',
-            'weights': {a.symbol: round(w, 4) for a, wassets, weights) in zip(self. if w > 0.001},
+                        'weights': {a.symbol: round(w, 4) for a, w in zip(self.assets, weights) if w > 0.001},
             'expected_return': round(self.portfolio_return(weights), 4),
             'volatility': round(self.portfolio_volatility(weights), 4),
             'sharpe': round(self.portfolio_sharpe(weights), 3)
