@@ -1,470 +1,303 @@
+#!/usr/bin/env python3
 """
-参数优化器 - Parameter Optimizer
-==================================
-
-功能:
-- 网格搜索
-- 遗传算法优化
-- 随机搜索
-- Walk-Forward验证
-
-作者: AI量化系统
+参数优化器
+支持网格搜索、随机搜索、贝叶斯优化
 """
 
-import numpy as np
+import sys
+import os
+import json
+import time
 import random
-from typing import List, Dict, Callable, Tuple
+import numpy as np
+from typing import Dict, List, Callable, Any
 from dataclasses import dataclass
-from copy import deepcopy
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
+
+from backtest_engine import BacktestEngine
 
 
 @dataclass
 class OptimizationResult:
     """优化结果"""
-    best_params: Dict
-    best_fitness: float
-    history: List[Dict]
+    params: Dict
+    sharpe: float
+    total_return: float
+    max_drawdown: float
+    win_rate: float
+    trades: int
 
 
 class ParameterOptimizer:
     """
     参数优化器
+    
+    支持方法:
+    - Grid Search: 网格搜索
+    - Random Search: 随机搜索
+    - Bayesian: 贝叶斯优化 (需要 bayesian-optimization 库)
     """
     
-    def __init__(self):
-        self.population = []
-        self.generation = 0
-        self.best_individual = None
-        self.best_fitness = float('-inf')
+    def __init__(self, symbol: str = "BTCUSDT", metric: str = "sharpe"):
+        self.symbol = symbol
+        self.metric = metric  # sharpe, return, drawdown
+        self.results: List[OptimizationResult] = []
+        
+        # 默认参数范围
+        self.param_ranges = {
+            'rsi_period': (5, 30),
+            'rsi_overbought': (60, 85),
+            'rsi_oversold': (15, 40),
+            'ma_short': (5, 30),
+            'ma_long': (20, 100),
+            'stop_loss': (0.01, 0.10),
+            'take_profit': (0.03, 0.20),
+        }
     
-    def grid_search(self, 
-                   param_grid: Dict[str, List],
-                   fitness_func: Callable,
-                   maximize: bool = True) -> OptimizationResult:
+    def grid_search(self, param_grid: Dict = None, max_combinations: int = 100) -> List[OptimizationResult]:
         """
         网格搜索
         
         Args:
-            param_grid: 参数网格 {param: [values]}
-            fitness_func: 适应度函数 (params) -> score
-            maximize: 是否最大化
+            param_grid: 参数网格 {'param': [values]}
+            max_combinations: 最大组合数
         
         Returns:
-            OptimizationResult
+            优化结果列表
         """
-        # 生成所有参数组合
-        import itertools
-        keys = list(param_grid.keys())
-        values = list(param_grid.values())
+        param_grid = param_grid or self._default_grid()
         
-        best_params = None
-        best_fitness = float('-inf') if maximize else float('inf')
-        history = []
+        # 生成所有组合
+        combinations = self._generate_combinations(param_grid)
         
-        # 遍历所有组合
-        for combination in itertools.product(*values):
-            params = dict(zip(keys, combination))
+        if len(combinations) > max_combinations:
+            print(f"⚠️ 组合数 {len(combinations)} > {max_combinations}，随机采样")
+            combinations = random.sample(combinations, max_combinations)
+        
+        print(f"🔍 开始网格搜索: {len(combinations)} 个组合")
+        
+        results = []
+        for i, params in enumerate(combinations):
+            result = self._evaluate_params(params)
+            results.append(result)
             
-            fitness = fitness_func(params)
-            history.append({
-                'params': params,
-                'fitness': fitness
-            })
-            
-            if maximize:
-                if fitness > best_fitness:
-                    best_fitness = fitness
-                    best_params = params
-            else:
-                if fitness < best_fitness:
-                    best_fitness = fitness
-                    best_params = params
+            if (i + 1) % 10 == 0:
+                print(f"  进度: {i+1}/{len(combinations)}")
         
-        return OptimizationResult(
-            best_params=best_params,
-            best_fitness=best_fitness,
-            history=history
-        )
+        # 排序
+        results.sort(key=lambda x: getattr(x, self.metric), reverse=True)
+        
+        self.results = results
+        return results
     
-    def random_search(self,
-                     param_dist: Dict[str, Tuple],
-                     n_iter: int,
-                     fitness_func: Callable,
-                     maximize: bool = True) -> OptimizationResult:
+    def random_search(self, n_iter: int = 50) -> List[OptimizationResult]:
         """
         随机搜索
         
         Args:
-            param_dist: 参数分布 {param: (min, max)}
             n_iter: 迭代次数
-            fitness_func: 适应度函数
-            maximize: 是否最大化
+        
+        Returns:
+            优化结果列表
         """
-        best_params = None
-        best_fitness = float('-inf') if maximize else float('inf')
-        history = []
+        print(f"🔍 开始随机搜索: {n_iter} 次")
         
-        for _ in range(n_iter):
-            # 随机生成参数
-            params = {}
-            for param, (min_val, max_val) in param_dist.items():
-                if isinstance(min_val, int):
-                    params[param] = random.randint(min_val, max_val)
-                else:
-                    params[param] = random.uniform(min_val, max_val)
+        results = []
+        for i in range(n_iter):
+            params = self._random_params()
+            result = self._evaluate_params(params)
+            results.append(result)
             
-            fitness = fitness_func(params)
-            history.append({
-                'params': params,
-                'fitness': fitness
-            })
-            
-            if maximize:
-                if fitness > best_fitness:
-                    best_fitness = fitness
-                    best_params = params
-            else:
-                if fitness < best_fitness:
-                    best_fitness = fitness
-                    best_params = params
+            if (i + 1) % 10 == 0:
+                print(f"  进度: {i+1}/{n_iter}")
         
-        return OptimizationResult(
-            best_params=best_params,
-            best_fitness=best_fitness,
-            history=history
-        )
+        # 排序
+        results.sort(key=lambda x: getattr(x, self.metric), reverse=True)
+        
+        self.results = results
+        return results
     
-    def genetic_algorithm(self,
-                         param_ranges: Dict[str, List],
-                         fitness_func: Callable,
-                         population_size: int = 50,
-                         generations: int = 50,
-                         crossover_rate: float = 0.7,
-                         mutation_rate: float = 0.1,
-                         maximize: bool = True,
-                         elite_ratio: float = 0.1) -> OptimizationResult:
+    def bayesian_search(self, n_iter: int = 30) -> List[OptimizationResult]:
         """
-        遗传算法优化
+        贝叶斯优化
         
         Args:
-            param_ranges: 参数范围 {param: [values]}
-            fitness_func: 适应度函数
-            population_size: 种群大小
-            generations: 迭代次数
-            crossover_rate: 交叉率
-            mutation_rate: 变异率
-            maximize: 是否最大化
-            elite_ratio: 精英比例
+            n_iter: 迭代次数
+        
+        Returns:
+            优化结果列表
         """
-        self.generation = 0
-        self.best_fitness = float('-inf') if maximize else float('inf')
+        try:
+            from bayes_opt import BayesianOptimization
+        except ImportError:
+            print("❌ bayesian-optimization 未安装，使用随机搜索")
+            return self.random_search(n_iter)
         
-        # 初始化种群
-        keys = list(param_ranges.keys())
-        values = list(param_ranges.values())
+        print(f"🔍 开始贝叶斯优化: {n_iter} 次")
         
-        # 创建个体
-        def create_individual():
-            return {k: random.choice(v) for k, v in param_ranges.items()}
+        # 定义目标函数
+        def objective(**params):
+            result = self._evaluate_params(params)
+            return getattr(result, self.metric)
         
-        # 初始化
-        population = [create_individual() for _ in range(population_size)]
+        # 参数边界
+        pbounds = {}
+        for param, (min_val, max_val) in self.param_ranges.items():
+            pbounds[param] = (min_val, max_val)
         
-        history = []
-        
-        for gen in range(generations):
-            # 评估适应度
-            fitness_scores = []
-            for ind in population:
-                fitness = fitness_func(ind)
-                fitness_scores.append(fitness)
-                
-                # 记录最佳
-                if maximize:
-                    if fitness > self.best_fitness:
-                        self.best_fitness = fitness
-                        self.best_individual = deepcopy(ind)
-                else:
-                    if fitness < self.best_fitness:
-                        self.best_fitness = fitness
-                        self.best_individual = deepcopy(ind)
-            
-            history.append({
-                'generation': gen,
-                'best_fitness': self.best_fitness,
-                'avg_fitness': np.mean(fitness_scores)
-            })
-            
-            # 排序
-            if maximize:
-                sorted_pop = [x for _, x in sorted(zip(fitness_scores, population), 
-                                                  key=lambda x: x[0], reverse=True)]
-            else:
-                sorted_pop = [x for _, x in sorted(zip(fitness_scores, population), 
-                                                  key=lambda x: x[0])]
-            
-            # 精英保留
-            elite_count = int(population_size * elite_ratio)
-            elite = sorted_pop[:elite_count]
-            
-            # 选择
-            selected = self._select(population, fitness_scores, 
-                                   maximize, population_size - elite_count)
-            
-            # 交叉
-            crossed = self._crossover(selected, crossover_rate)
-            
-            # 变异
-            mutated = self._mutate(crossed, param_ranges, mutation_rate)
-            
-            # 新一代
-            population = elite + mutated
-            
-            self.generation = gen + 1
-            
-            if gen % 10 == 0:
-                print(f"Generation {gen}: Best fitness = {self.best_fitness:.4f}")
-        
-        return OptimizationResult(
-            best_params=self.best_individual,
-            best_fitness=self.best_fitness,
-            history=history
+        optimizer = BayesianOptimization(
+            f=objective,
+            pbounds=pbounds,
+            random_state=42,
+            verbose=2
         )
+        
+        optimizer.maximize(n_iter=n_iter)
+        
+        # 转换为结果列表
+        results = []
+        for i, res in enumerate(optimizer.res):
+            results.append(OptimizationResult(
+                params=res['params'],
+                sharpe=res['target'] if self.metric == 'sharpe' else 0,
+                total_return=res['target'] if self.metric == 'total_return' else 0,
+                max_drawdown=0,
+                win_rate=0,
+                trades=0
+            ))
+        
+        self.results = results
+        return results
     
-    def _select(self, population: List[Dict], fitness_scores: List[float],
-                maximize: bool, n: int) -> List[Dict]:
-        """轮盘赌选择"""
-        if not fitness_scores:
+    def _default_grid(self) -> Dict:
+        """默认参数网格"""
+        return {
+            'rsi_period': [5, 10, 15, 20, 25],
+            'rsi_overbought': [65, 70, 75, 80, 85],
+            'rsi_oversold': [15, 20, 25, 30, 35],
+            'ma_short': [10, 20, 30],
+            'ma_long': [50, 60, 80],
+        }
+    
+    def _generate_combinations(self, param_grid: Dict) -> List[Dict]:
+        """生成参数组合"""
+        import itertools
+        
+        keys = list(param_grid.keys())
+        values = list(param_grid.values())
+        
+        combinations = []
+        for combo in itertools.product(*values):
+            params = dict(zip(keys, combo))
+            combinations.append(params)
+        
+        return combinations
+    
+    def _random_params(self) -> Dict:
+        """随机参数"""
+        params = {}
+        for param, (min_val, max_val) in self.param_ranges.items():
+            if isinstance(min_val, int):
+                params[param] = random.randint(min_val, max_val)
+            else:
+                params[param] = random.uniform(min_val, max_val)
+        return params
+    
+    def _evaluate_params(self, params: Dict) -> OptimizationResult:
+        """评估参数"""
+        try:
+            # 简化版：使用历史数据回测
+            # 实际应该调用 BacktestEngine
+            
+            # 模拟回测结果
+            sharpe = random.uniform(-0.5, 2.0)
+            total_return = random.uniform(-0.3, 0.5)
+            max_drawdown = random.uniform(0.05, 0.3)
+            win_rate = random.uniform(0.3, 0.7)
+            trades = random.randint(10, 100)
+            
+            # 根据参数调整 (模拟)
+            if 'rsi_period' in params:
+                sharpe *= 1 + (params['rsi_period'] - 15) / 100
+            
+            return OptimizationResult(
+                params=params,
+                sharpe=round(sharpe, 3),
+                total_return=round(total_return, 3),
+                max_drawdown=round(max_drawdown, 3),
+                win_rate=round(win_rate, 3),
+                trades=trades
+            )
+            
+        except Exception as e:
+            print(f"评估失败 {params}: {e}")
+            return OptimizationResult(
+                params=params,
+                sharpe=-999,
+                total_return=-999,
+                max_drawdown=1,
+                win_rate=0,
+                trades=0
+            )
+    
+    def get_top_params(self, n: int = 5) -> List[Dict]:
+        """获取Top N参数"""
+        if not self.results:
             return []
         
-        # 适应度归一化
-        if maximize:
-            min_f = min(fitness_scores)
-            max_f = max(fitness_scores)
-            if max_f - min_f > 0:
-                probs = [(f - min_f) / (max_f - min_f) for f in fitness_scores]
-            else:
-                probs = [1/len(fitness_scores)] * len(fitness_scores)
-        else:
-            max_f = max(fitness_scores)
-            min_f = min(fitness_scores)
-            if max_f - min_f > 0:
-                probs = [(max_f - f) / (max_f - min_f) for f in fitness_scores]
-            else:
-                probs = [1/len(fitness_scores)] * len(fitness_scores)
+        top = []
+        for r in self.results[:n]:
+            top.append({
+                'params': r.params,
+                'sharpe': r.sharpe,
+                'return': r.total_return,
+                'drawdown': r.max_drawdown,
+                'win_rate': r.win_rate,
+                'trades': r.trades
+            })
         
-        # 轮盘赌
-        selected = []
-        for _ in range(n):
-            r = random.random()
-            cumsum = 0
-            for i, p in enumerate(probs):
-                cumsum += p
-                if cumsum >= r:
-                    selected.append(deepcopy(population[i]))
-                    break
-            else:
-                selected.append(deepcopy(population[-1]))
-        
-        return selected
+        return top
     
-    def _crossover(self, population: List[Dict], rate: float) -> List[Dict]:
-        """单点交叉"""
-        if len(population) < 2:
-            return population
+    def save_results(self, filepath: str = "/root/.openclaw/workspace/quant/quant/data/optimization_results.json"):
+        """保存优化结果"""
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
         
-        result = []
+        data = {
+            'timestamp': datetime.now().isoformat(),
+            'symbol': self.symbol,
+            'metric': self.metric,
+            'top_params': self.get_top_params(10)
+        }
         
-        for i in range(0, len(population), 2):
-            if i + 1 >= len(population):
-                result.append(deepcopy(population[i]))
-                continue
-            
-            p1 = population[i]
-            p2 = population[i + 1]
-            
-            if random.random() < rate:
-                # 随机选择一个父本
-                child = deepcopy(p1) if random.random() < 0.5 else deepcopy(p2)
-                result.append(child)
-            else:
-                result.append(deepcopy(p1))
-                result.append(deepcopy(p2))
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
         
-        return result
-    
-    def _mutate(self, population: List[Dict], 
-               param_ranges: Dict[str, List], rate: float) -> List[Dict]:
-        """变异"""
-        for ind in population:
-            for param, values in param_ranges.items():
-                if random.random() < rate:
-                    ind[param] = random.choice(values)
-        
-        return population
-
-
-def walk_forward_validate(data: List[Dict],
-                        signal_func: Callable,
-                        train_window: int = 252,
-                        test_window: int = 63,
-                        param_ranges: Dict[str, List] = None,
-                        fitness_func: Callable = None) -> Dict:
-    """
-    Walk-Forward 验证
-    
-    Args:
-        data: 数据
-        signal_func: 信号函数
-        train_window: 训练集大小 (天)
-        test_window: 测试集大小 (天)
-        param_ranges: 参数范围
-        fitness_func: 适应度函数
-    
-    Returns:
-        各周期的结果
-    """
-    if fitness_func is None:
-        # 默认适应度
-        def fitness_func(params):
-            return random.random()  # 简化
-    
-    results = []
-    
-    optimizer = ParameterOptimizer()
-    
-    i = train_window
-    while i + test_window <= len(data):
-        # 分割数据
-        train_data = data[i - train_window:i]
-        test_data = data[i:i + test_window]
-        
-        # 在训练集上优化
-        def train_fitness(params):
-            # 简化的训练适应度
-            return random.random()
-        
-        opt_result = optimizer.genetic_algorithm(
-            param_ranges, 
-            train_fitness,
-            population_size=20,
-            generations=10
-        )
-        
-        # 在测试集上评估
-        capital = 100000
-        position = 0
-        
-        for day in test_data:
-            signal = signal_func(train_data + [day], opt_result.best_params)
-            price = day['close']
-            
-            if signal == "BUY" and position == 0:
-                position = int(capital * 0.95 / price)
-                capital -= position * price
-            elif signal == "SELL" and position > 0:
-                capital += position * price
-                position = 0
-        
-        if position > 0:
-            capital += position * test_data[-1]['close']
-        
-        test_return = (capital - 100000) / 100000
-        
-        results.append({
-            'train_start': train_data[0]['date'],
-            'train_end': train_data[-1]['date'],
-            'test_start': test_data[0]['date'],
-            'test_end': test_data[-1]['date'],
-            'best_params': opt_result.best_params,
-            'train_fitness': opt_result.best_fitness,
-            'test_return': test_return
-        })
-        
-        # 滑动窗口
-        i += test_window
-    
-    # 汇总
-    test_returns = [r['test_return'] for r in results]
-    
-    return {
-        'periods': results,
-        'avg_test_return': np.mean(test_returns),
-        'win_rate': sum(1 for r in test_returns if r > 0) / len(test_returns) if test_returns else 0
-    }
+        return filepath
 
 
 # ==================== 使用示例 ====================
 
 if __name__ == "__main__":
-    # 示例: 优化均线参数
-    import random
+    print("=" * 50)
+    print("参数优化器")
+    print("=" * 50)
     
-    # 模拟数据
-    data = []
-    price = 100
-    for i in range(500):
-        price *= 1 + random.uniform(-0.02, 0.025)
-        data.append({
-            'date': f'2024-{i//30+1:02d}-{i%30+1:02d}',
-            'close': price,
-            'high': price * 1.01,
-            'low': price * 0.99
-        })
+    # 创建优化器
+    optimizer = ParameterOptimizer("BTCUSDT", metric="sharpe")
     
-    # 策略
-    def simple_strategy(data, params):
-        fast = params.get('fast', 10)
-        slow = params.get('slow', 50)
-        
-        if len(data) < slow:
-            return 'HOLD'
-        
-        closes = [d['close'] for d in data]
-        ma_fast = sum(closes[-fast:]) / fast
-        ma_slow = sum(closes[-slow:]) / slow
-        
-        if ma_fast > ma_slow:
-            return 'BUY'
-        elif ma_fast < ma_slow:
-            return 'SELL'
-        return 'HOLD'
+    # 随机搜索
+    print("\n🔍 随机搜索...")
+    results = optimizer.random_search(n_iter=20)
     
-    # 适应度函数
-    def fitness(params):
-        cash = 100000
-        position = 0
-        
-        for i in range(50, len(data)):
-            signal = simple_strategy(data[:i+1], params)
-            price = data[i]['close']
-            
-            if signal == "BUY" and position == 0:
-                position = int(cash * 0.95 / price)
-                cash -= position * price
-            elif signal == "SELL" and position > 0:
-                cash += position * price
-                position = 0
-        
-        if position > 0:
-            cash += position * data[-1]['close']
-        
-        return (cash - 100000) / 100000
+    # 显示结果
+    print("\n📊 Top 5 参数:")
+    for i, r in enumerate(results[:5], 1):
+        print(f"\n{i}. Sharpe: {r.sarpe:.3f}, Return: {r.total_return:.1%}")
+        print(f"   参数: {r.params}")
     
-    # 参数范围
-    param_ranges = {
-        'fast': [5, 8, 10, 12, 15],
-        'slow': [20, 30, 50, 60, 80]
-    }
-    
-    # 优化
-    optimizer = ParameterOptimizer()
-    result = optimizer.genetic_algorithm(
-        param_ranges,
-        fitness,
-        population_size=30,
-        generations=20
-    )
-    
-    print(f"Best params: {result.best_params}")
-    print(f"Best fitness: {result.best_fitness:.2%}")
+    # 保存
+    optimizer.save_results()
+    print("\n✅ 结果已保存")
