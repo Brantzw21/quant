@@ -28,12 +28,12 @@ class SmallCapitalStrategy:
         # 安全的杠杆倍数
         self.leverage = 5  # 5倍杠杆
         
-        # 每单金额 (用10%的资金)
-        self.order_pct = 0.10  # 每次约6U
+        # 每单金额 (最少20U)
+        self.order_pct = 0.40  # 每次约20U
         self.order_amount = capital * self.order_pct
         
         # 止损 (3%)
-        self.stop_loss = 0.03
+        self.stop_loss = 0.02
         
         # 止盈 (6%)
         self.take_profit = 0.06
@@ -42,7 +42,7 @@ class SmallCapitalStrategy:
         self.grid_strategy = SmartGridStrategy(
             symbol="ETHUSDT",
             base_grid_count=3,  # 少档位
-            grid_range=0.03,   # 小范围3%
+            grid_range=0.015,   # 小范围3%
             order_amount=self.order_amount,
             use_trend_filter=True,
             use_dynamic_grid=True,
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     print(f"  建议: {risk['recommendation']}")
     
     # 订单
-n    print(f"\📝 当前信号:")
+    print(f"\n📝 当前信号:")
     order = strategy.generate_order(2067, 0)
     print(f"  操作: {order['action']}")
     print(f"  金额: {order['amount']}")

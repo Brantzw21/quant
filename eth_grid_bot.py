@@ -1,244 +1,269 @@
 #!/usr/bin/env python3
 """
-ETH合约自动交易机器人
-5倍杠杆网格策略
+ETH 网格交易机器人
+用户策略: $1736-$2199 区间, 10格, 止损$1700
 """
-
-import os
-import sys
 import time
+import yaml
 import json
 from datetime import datetime
-
-sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
-
 from binance.client import Client
-from small_capital_strategy import SmallCapitalStrategy
 from notify import send_message
 
 # 配置
-SYMBOL = "ETHUSDT"
-CAPITAL = 63
-LEVERAGE = 5
-CHECK_INTERVAL = 300  # 5分钟检查一次
+CONFIG_FILE = 'config/exchange.yaml'
+SYMBOL = 'ETHUSDT'
+LEVERAGE = 10
+CHECK_INTERVAL = 60  # 每分钟检查
+
+# 网格参数 - 动态网格
+GRID_BOTTOM = 1736  # 历史底部
+GRID_TOP = 2199    # 历史顶部
+GRID_COUNT = 10
+STOP_LOSS = 1700
+PRICE_RANGE = 0.05  # 只挂当前价格±5%范围内的单
+
+# 每格数量
+USDT_PER_GRID = 20  # 每格20U
+
+# 加载配置
+with open(CONFIG_FILE) as f:
+    config = yaml.safe_load(f)
+
+client = Client(
+    config['binance']['testnet']['api_key'],
+    config['binance']['testnet']['secret_key'],
+    testnet=True
+)
 
 # 状态文件
-STATE_FILE = "/root/.openclaw/workspace/quant/quant/data/eth_grid_state.json"
+STATE_FILE = 'grid_bot_state.json'
 
 
 def load_state():
-    """加载状态"""
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, 'r') as f:
+    try:
+        with open(STATE_FILE) as f:
             return json.load(f)
-    return {"position": 0, "entry_price": 0, "orders": 0}
+    except:
+        return {
+            'grid_orders': {},  # {price: {side, qty, filled}}
+            'position': 0,
+            'entry_price': 0,
+            'total_pnl': 0
+        }
 
 
 def save_state(state):
-    """保存状态"""
     with open(STATE_FILE, 'w') as f:
-        json.dump(state, f, indent=2)
+        json.dump(state, f)
 
 
-def get_client(testnet=False):
-    """获取交易客户端"""
-    from config import API_KEY, SECRET_KEY, TESTNET
+def get_price():
+    return float(client.get_symbol_ticker(symbol=SYMBOL)['price'])
+
+
+def get_position():
+    for p in client.futures_position_information(symbol=SYMBOL):
+        amt = float(p.get('positionAmt', 0))
+        if amt != 0:
+            return {
+                'amount': abs(amt),
+                'entry_price': float(p.get('entryPrice', 0)),
+                'side': 'LONG' if amt > 0 else 'SHORT',
+                'pnl': float(p.get('unrealizedProfit', 0))
+            }
+    return None
+
+
+def cancel_all_orders():
+    """取消所有挂单"""
+    orders = client.futures_get_open_orders(symbol=SYMBOL)
+    for o in orders:
+        client.futures_cancel_order(symbol=SYMBOL, orderId=o['orderId'])
+    print(f"取消 {len(orders)} 个挂单")
+
+
+def place_grid_orders(state):
+    """挂网格单 - 只挂当前价格±5%范围内"""
+    current_price = get_price()
+    placed = 0
     
-    # 优先使用配置文件
-    import yaml
-    with open('/root/.openclaw/workspace/quant/quant/config/exchange.yaml') as f:
-        config = yaml.safe_load(f)
+    # 动态计算网格范围
+    lower = current_price * (1 - PRICE_RANGE)
+    upper = current_price * (1 + PRICE_RANGE)
+    grid_size = (upper - lower) / GRID_COUNT
     
-    if testnet:
-        api_key = config['binance']['testnet']['api_key']
-        secret = config['binance']['testnet']['secret_key']
-    else:
-        api_key = config['binance']['production']['api_key']
-        secret = config['binance']['production']['secret_key']
+    print(f"挂单范围: ${lower:.2f} - ${upper:.2f}")
     
-    return Client(api_key, secret, testnet=testnet)
-
-
-def get_balance(client):
-    """获取账户余额"""
-    try:
-        account = client.futures_account()
-        return float(account['totalWalletBalance'])
-    except Exception as e:
-        print(f"获取余额失败: {e}")
-        return 0
-
-
-def get_position(client, symbol=SYMBOL):
-    """获取持仓"""
-    try:
-        positions = client.futures_position_information(symbol=symbol)
-        for pos in positions:
-            if float(pos['positionAmt']) != 0:
-                return {
-                    'amount': abs(float(pos['positionAmt'])),
-                    'entry_price': float(pos['entryPrice']),
-                    'side': 'LONG' if float(pos['positionAmt']) > 0 else 'SHORT',
-                    'unrealized': float(pos['unrealizedProfit'])
+    for i in range(GRID_COUNT + 1):
+        grid_price = round(lower + i * grid_size, 2)
+        
+        # 检查是否已挂单
+        if str(grid_price) in state['grid_orders']:
+            continue
+        
+        qty = max(USDT_PER_GRID / grid_price, 0.001)
+        qty = round(qty, 3)
+        
+        # 买单 (低于当前价格) - 做空单
+        if grid_price < current_price:
+            try:
+                order = client.futures_create_order(
+                    symbol=SYMBOL,
+                    side='SELL',
+                    type='LIMIT',
+                    quantity=qty,
+                    price=grid_price,
+                    timeInForce='GTC',
+                    positionSide='BOTH'
+                )
+                state['grid_orders'][str(grid_price)] = {
+                    'side': 'SELL',
+                    'qty': qty,
+                    'order_id': order['orderId']
                 }
-        return None
-    except Exception as e:
-        print(f"获取持仓失败: {e}")
-        return None
-
-
-def get_current_price(client):
-    """获取当前价格"""
-    try:
-        ticker = client.get_symbol_ticker(symbol=SYMBOL)
-        return float(ticker['price'])
-    except Exception as e:
-        print(f"获取价格失败: {e}")
-        return 0
-
-
-def open_position(client, side, amount, price=None):
-    """开仓"""
-    try:
-        if price:
-            # 限价单
-            order = client.futures_create_order(
-                symbol=SYMBOL,
-                side=side,
-                type='LIMIT',
-                quantity=amount,
-                price=price,
-                timeInForce='GTC',
-                leverage=LEVERAGE
-            )
+                placed += 1
+                print(f"挂空单: ${grid_price} x {qty:.3f}")
+            except Exception as e:
+                print(f"挂空单失败: {e}")
+        
+        # 卖单 (高于当前价格) - 做多单
         else:
-            # 市价单
-            order = client.futures_create_order(
+            try:
+                order = client.futures_create_order(
+                    symbol=SYMBOL,
+                    side='BUY',
+                    type='LIMIT',
+                    quantity=qty,
+                    price=grid_price,
+                    timeInForce='GTC',
+                    positionSide='BOTH'
+                )
+                state['grid_orders'][str(grid_price)] = {
+                    'side': 'BUY',
+                    'qty': qty,
+                    'order_id': order['orderId']
+                }
+                placed += 1
+                print(f"挂多单: ${grid_price} x {qty:.3f}")
+            except Exception as e:
+                print(f"挂多单失败: {e}")
+    
+    if placed > 0:
+        save_state(state)
+        print(f"✅ 挂单完成: {placed} 个")
+
+
+def check_filled_orders(state):
+    """检查成交并更新状态"""
+    current_price = get_price()
+    position = get_position()
+    
+    total_pnl = 0
+    
+    # 查询所有订单状态
+    open_orders = client.futures_get_open_orders(symbol=SYMBOL)
+    open_prices = {str(round(float(o['price']), 2)): o['orderId'] for o in open_orders}
+    
+    # 清理已成交/取消的订单
+    to_remove = []
+    for price_str, info in state['grid_orders'].items():
+        if price_str not in open_prices:
+            # 订单已成交或取消
+            to_remove.append(price_str)
+            if position:
+                print(f"订单成交/取消: ${price_str}")
+    
+    for p in to_remove:
+        del state['grid_orders'][p]
+    
+    save_state(state)
+    return position
+
+
+def check_stop_loss(current_price, position):
+    """检查止损"""
+    if position and current_price < STOP_LOSS:
+        print(f"⚠️ 触发止损: ${current_price} < ${STOP_LOSS}")
+        # 市价平仓
+        try:
+            client.futures_create_order(
                 symbol=SYMBOL,
-                side=side,
+                side='SELL' if position['amount'] > 0 else 'BUY',
                 type='MARKET',
-                quantity=amount,
-                leverage=LEVERAGE
+                quantity=round(position['amount'], 4),
+                positionSide='LONG' if position['amount'] > 0 else 'SHORT'
             )
-        
-        print(f"✅ 开仓成功: {side} {amount} ETH")
-        send_message(f"🔔 开仓: {side} {amount} ETH @ {price or '市价'}")
-        return order
-    except Exception as e:
-        print(f"❌ 开仓失败: {e}")
-        return None
-
-
-def close_position(client, amount):
-    """平仓"""
-    try:
-        # 获取持仓方向
-        position = get_position(client)
-        if not position:
-            return None
-        
-        side = 'SELL' if position['side'] == 'LONG' else 'BUY'
-        
-        order = client.futures_create_order(
-            symbol=SYMBOL,
-            side=side,
-            type='MARKET',
-            quantity=amount
-        )
-        
-        print(f"✅ 平仓成功: {side} {amount} ETH")
-        send_message(f"🔔 平仓: {side} {amount} ETH")
-        return order
-    except Exception as e:
-        print(f"❌ 平仓失败: {e}")
-        return None
+            print("✅ 止损平仓")
+            return True
+        except Exception as e:
+            print(f"止损失败: {e}")
+    return False
 
 
 def run():
-    """运行交易机器人"""
-    print("=" * 50)
-    print("ETH合约网格交易机器人启动")
-    print(f"模式: {'测试网' if True else '实盘'}")
-    print(f"杠杆: {LEVERAGE}x")
-    print("=" * 50)
+    print("="*50)
+    print("ETH 网格交易机器人")
+    print(f"区间: ${GRID_BOTTOM} - ${GRID_TOP}")
+    print(f"网格: {GRID_COUNT} 格 x ${USDT_PER_GRID}")
+    print(f"止损: ${STOP_LOSS}")
+    print("="*50)
     
-    # 初始化客户端
-    client = get_client(testnet=False)  # 实盘
-    
-    # 初始化策略
-    strategy = SmallCapitalStrategy(CAPITAL)
-    
-    # 加载状态
     state = load_state()
-    print(f"当前持仓: {state.get('position', 0)} ETH")
+    last_report = time.time()
     
-    # 发送启动通知
-    send_message("🤖 ETH网格交易机器人启动\n5倍杠杆 | 63U本金")
+    # 取消旧挂单
+    cancel_all_orders()
+    
+    # 挂新网格
+    place_grid_orders(state)
+    
+    send_message(f"🤖 ETH网格机器人启动\n" +
+                f"区间: ${GRID_BOTTOM} - ${GRID_TOP}\n" +
+                f"网格: {GRID_COUNT}格\n" +
+                f"止损: ${STOP_LOSS}")
     
     while True:
         try:
-            # 获取数据
-            current_price = get_current_price(client)
-            balance = get_balance(client)
-            position = get_position(client)
+            current_price = get_price()
+            position = get_position()
             
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}]")
             print(f"  价格: ${current_price}")
-            print(f"  余额: ${balance:.2f}")
             print(f"  持仓: {position['amount'] if position else 0} ETH")
+            print(f"  挂单数: {len(state['grid_orders'])}")
             
-            # 生成信号
-            order = strategy.generate_order(
-                current_price=current_price,
-                positions=position['amount'] if position else 0
-            )
+            # 检查止损
+            if check_stop_loss(current_price, position):
+                # 止损后重新挂单
+                cancel_all_orders()
+                state = load_state()
+                state['grid_orders'] = {}
+                save_state(state)
+                place_grid_orders(state)
+                send_message(f"🛑 止损触发! 价格: ${current_price}")
             
-            print(f"  信号: {order['action']} - {order['reason']}")
+            # 检查成交
+            check_filled_orders(state)
             
-            # 执行交易
-            if order['action'] == 'BUY' and not position:
-                # 开多仓
-                amount = order['amount'] / current_price
-                result = open_position(client, 'BUY', amount)
-                if result:
-                    state['position'] = amount
-                    state['entry_price'] = current_price
-                    state['orders'] += 1
-                    save_state(state)
+            # 检查是否需要补单
+            if len(state['grid_orders']) < GRID_COUNT:
+                place_grid_orders(state)
             
-            elif order['action'] == 'SELL' and position:
-                # 平仓
-                result = close_position(client, position['amount'])
-                if result:
-                    state['position'] = 0
-                    state['entry_price'] = 0
-                    state['orders'] += 1
-                    save_state(state)
-            
-            # 检查止损/止盈
-            if position:
-                pnl_pct = (current_price - position['entry_price']) / position['entry_price']
-                
-                # 止损 -3%
-                if pnl_pct <= -0.03:
-                    print(f"  ⚠️ 触发止损!")
-                    close_position(client, position['amount'])
-                    state['position'] = 0
-                    save_state(state)
-                    send_message(f"🛑 止损! 亏损{pnl_pct:.1%}")
-                
-                # 止盈 +6%
-                elif pnl_pct >= 0.06:
-                    print(f"  ✅ 触发止盈!")
-                    close_position(client, position['amount'])
-                    state['position'] = 0
-                    save_state(state)
-                    send_message(f"💰 止盈! 盈利{pnl_pct:.1%}")
+            # 每小时报告
+            if time.time() - last_report > 3600:
+                pos = position['amount'] if position else 0
+                pnl = position['pnl'] if position else 0
+                send_message(f"📊 网格状态\n" +
+                           f"价格: ${current_price}\n" +
+                           f"持仓: {pos:.4f} ETH\n" +
+                           f"盈亏: ${pnl:.2f}\n" +
+                           f"挂单: {len(state['grid_orders'])}个")
+                last_report = time.time()
             
         except Exception as e:
             print(f"错误: {e}")
         
-        # 等待
         time.sleep(CHECK_INTERVAL)
 
 
