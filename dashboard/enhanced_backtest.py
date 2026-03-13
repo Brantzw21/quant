@@ -1,281 +1,237 @@
 """
-增强的回测API - 支持多市场
+增强的回测API - 基于统一回测框架
 """
-from flask import Flask, jsonify, request
-import random
+from datetime import datetime
+
+from flask import jsonify, request
+import pandas as pd
 import sys
+
 sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
-# 数据管理器
-try:
-    from data_manager import MarketDataManager, FuturesDataManager
-    dm = MarketDataManager()
-    fdm = FuturesDataManager()
-except:
-    dm = None
-    fdm = None
-
-# 支持的市场
-MARKETS = {
-    "crypto": {
-        "name": "加密货币", 
-        "symbols": [
-            {"code": "BTCUSDT", "name": "比特币 BTC"},
-            {"code": "ETHUSDT", "name": "以太坊 ETH"},
-            {"code": "BNBUSDT", "name": "币安币 BNB"}
-        ]
-    },
-    "us_stock": {
-        "name": "美股", 
-        "symbols": [
-            {"code": "SPX", "name": "标普500 ^GSPC"},
-            {"code": "SPY", "name": "SPY ETF"},
-            {"code": "AAPL", "name": "苹果"},
-            {"code": "MSFT", "name": "微软"},
-            {"code": "GOOGL", "name": "谷歌"},
-            {"code": "TSLA", "name": "特斯拉"},
-            {"code": "NVDA", "name": "英伟达"}
-        ]
-    },
-    "a_stock": {
-        "name": "A股", 
-        "symbols": [
-            {"code": "sz.399006", "name": "创业板指"},
-            {"code": "sh.000300", "name": "沪深300"},
-            {"code": "sh.000016", "name": "上证50"},
-            {"code": "sh.510300", "name": "沪深300ETF"},
-            {"code": "sh.159919", "name": "券商ETF"}
-        ]
-    }
-}
-
-# 策略列表
-STRATEGIES = [
-    {"id": "momentum", "name": "动量策略", "params": {"period": 20}},
-    {"id": "ma_cross", "name": "均线交叉", "params": {"fast": 5, "slow": 20}},
-    {"id": "macd", "name": "MACD", "params": {}},
-    {"id": "turtle", "name": "海龟策略", "params": {}},
-    {"id": "breakout", "name": "突破策略", "params": {}},
-    {"id": "channel", "name": "通道突破", "params": {}},
-]
+from backtest_framework import Backtester, BacktestConfig, ParameterOptimizer
+from unified_backtest import MARKETS, STRATEGIES, FunctionStrategy, get_data, to_dataframe
 
 
 def get_markets():
     """获取支持的市场"""
-    return jsonify(MARKETS)
+    enriched = {}
+    for key, meta in MARKETS.items():
+        enriched[key] = {
+            'name': meta['name'],
+            'symbols': [{'code': s, 'name': s} for s in meta['examples']],
+        }
+    return jsonify(enriched)
 
 
 def get_strategies():
     """获取支持的策略"""
-    return jsonify(STRATEGIES)
+    return jsonify([
+        {'id': key, 'name': value[0], 'params': value[2]}
+        for key, value in STRATEGIES.items()
+    ])
+
+
+def _build_strategy(strategy_key: str):
+    desc, func, params = STRATEGIES[strategy_key]
+    return desc, FunctionStrategy(desc, func, params)
 
 
 def run_enhanced_backtest():
-    """增强回测 - 支持多市场"""
-    from datetime import datetime
-    import math
-    
-    data = request.json or {}
-    
-    market = data.get('market', 'crypto')
-    symbol = data.get('symbol', 'BTCUSDT')
-    strategy = data.get('strategy', 'momentum')
-    start_date = data.get('start_date', '2024-01-01')
-    end_date = data.get('end_date', '2025-12-31')
-    initial_capital = data.get('initial_capital', 100000)
-    fee = data.get('fee', 0.001)
-    slippage = data.get('slippage', 5)
-    seed = data.get('seed', 42)
-    
-    import random
-    random.seed(seed)
-    
-    # 标的映射
-    symbol_map = {
-        # 加密货币
-        'BTCUSDT': {'type': 'crypto', 'ccxt': 'BTC/USDT:USDT'},
-        'ETHUSDT': {'type': 'crypto', 'ccxt': 'ETH/USDT:USDT'},
-        'BNBUSDT': {'type': 'crypto', 'ccxt': 'BNB/USDT:USDT'},
-        # 美股
-        'SPX': {'type': 'us_stock', 'yahoo': 'SPY'},
-        '^GSPC': {'type': 'us_stock', 'yahoo': 'SPY'},
-        'SPY': {'type': 'us_stock', 'yahoo': 'SPY'},
-        'AAPL': {'type': 'us_stock', 'yahoo': 'AAPL'},
-        'MSFT': {'type': 'us_stock', 'yahoo': 'MSFT'},
-        'NVDA': {'type': 'us_stock', 'yahoo': 'NVDA'},
-        'GOOGL': {'type': 'us_stock', 'yahoo': 'GOOGL'},
-        'TSLA': {'type': 'us_stock', 'yahoo': 'TSLA'},
-        # A股
-        'sz.399300': {'type': 'a_stock', 'akshare': 'sz399300'},
-        'sh.000300': {'type': 'a_stock', 'akshare': 'sz399300'},
-        'sz.399006': {'type': 'a_stock', 'akshare': 'sz399006'},
-    }
-    
-    # 获取真实数据
-    real_prices = []
-    data_source = "simulated"
-    
-    try:
-        cfg = symbol_map.get(symbol, {})
-        
-        if cfg.get('type') == 'crypto':
-            import ccxt
-            exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
-            start_ts = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp() * 1000)
-            end_ts = int(datetime.strptime(end_date, '%Y-%m-%d').timestamp() * 1000)
-            ohlcv = exchange.fetch_ohlcv(cfg['ccxt'], '1d', start_ts, limit=500)
-            for k in ohlcv:
-                if start_ts <= k[0] <= end_ts:
-                    real_prices.append({
-                        'date': datetime.fromtimestamp(k[0]/1000).strftime('%Y-%m-%d'),
-                        'close': k[4], 'high': k[2], 'low': k[3], 'open': k[1]
-                    })
-            data_source = f"Binance Futures ({symbol})"
-            
-        elif cfg.get('type') == 'us_stock':
-            try:
-                # Polygon.io 美股数据 (免费API)
-                import requests
-                POLYGON_KEY = 'pnj9b5RN8Q_Sc_dcBsS9p7K_IUe9VMqR'
-                
-                polygon_symbol = cfg.get('yahoo')  # 使用 yahoo 字段存储的 symbol
-                url = f'https://api.polygon.io/v2/aggs/ticker/{polygon_symbol}/range/1/day/{start_date}/{end_date}?adjusted=true&sort=asc&limit=5000&apiKey={POLYGON_KEY}'
-                
-                resp = requests.get(url, timeout=30)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    results = data.get('results', [])
-                    for r in results:
-                        real_prices.append({
-                            'date': datetime.fromtimestamp(r['t']/1000).strftime('%Y-%m-%d'),
-                            'close': r['c'], 'high': r['h'], 'low': r['l'], 'open': r['o']
-                        })
-                    data_source = f"Polygon ({symbol})"
-            except Exception as e:
-                print(f"Polygon error: {e}")
-                
-        elif cfg.get('type') == 'a_stock':
-            # A股数据 - 使用akshare
-            try:
-                import akshare as ak
-                import pandas as pd
-                
-                akshare_symbol = cfg.get('akshare')
-                if akshare_symbol:
-                    df = ak.stock_zh_index_daily(symbol=akshare_symbol)
-                    df['date'] = pd.to_datetime(df['date'])
-                    df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
-                    df = df.sort_values('date')
-                    for _, row in df.iterrows():
-                        real_prices.append({
-                            'date': row['date'].strftime('%Y-%m-%d'),
-                            'close': row['close'], 'high': row['high'], 'low': row['low'], 'open': row['open']
-                        })
-                    data_source = f"Akshare ({symbol})"
-            except Exception as e:
-                print(f"Akshare error: {e}")
-    except Exception as e:
-        print(f"数据获取失败: {e}")
-    
-    # 如果没有真实数据，使用模拟
-    if not real_prices or len(real_prices) < 2:
-        days = min(365, (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days)
-        initial_price = 50000 if market == 'crypto' else (4500 if market == 'us_stock' else 4000)
-        prices = [initial_price]
-        for _ in range(days):
-            prices.append(prices[-1] * (1 + random.gauss(0.0001, 0.02)))
-        real_prices = [{'date': f'Day {i+1}', 'close': p} for i, p in enumerate(prices)]
-        data_source = "simulated"
-    
-    # 回测模拟
-    prices = [p['close'] for p in real_prices]
-    days = len(prices)
-    
-    equity = initial_capital
-    position = 0
-    equity_curve = []
-    trades = []
-    entry_price = 0
-    
-    for i in range(1, days):
-        price = prices[i]
-        signal = random.choice(["BUY", "SELL", "HOLD"])
-        
-        if signal == "BUY" and position == 0:
-            fill_price = price * (1 + slippage / 10000)
-            position = equity / fill_price
-            entry_price = fill_price
-            equity -= position * fill_price * (1 + fee)
-            trades.append({"date": real_prices[i].get('date', f'Day {i}'), "side": "BUY", "price": round(fill_price, 2)})
-        elif signal == "SELL" and position > 0:
-            fill_price = price * (1 - slippage / 10000)
-            pnl = (fill_price - entry_price) * position
-            equity += position * fill_price * (1 - fee)
-            trades.append({"date": real_prices[i].get('date', f'Day {i}'), "side": "SELL", "price": round(fill_price, 2), "pnl": round(pnl, 2)})
-            position = 0
-        
-        total_value = equity + position * price if position > 0 else equity
-        equity_curve.append({
-            "date": real_prices[i].get('date', f'Day {i}'),
-            "equity": round(total_value, 2)
-        })
-    
-    # 计算指标
-    equity_values = [e["equity"] for e in equity_curve]
-    returns = []
-    for i in range(1, len(equity_values)):
-        ret = (equity_values[i] - equity_values[i-1]) / equity_values[i-1]
-        returns.append(ret)
-    
-    if returns and len(returns) > 1:
-        avg_ret = sum(returns) / len(returns)
-        std_ret = math.sqrt(sum((r - avg_ret) ** 2 for r in returns) / len(returns))
-        sharpe = (avg_ret / (std_ret + 1e-9)) * math.sqrt(252) if std_ret > 0 else 0
-    else:
-        sharpe = 0
-    
-    peak = equity_values[0] if equity_values else initial_capital
-    max_dd = 0
-    for v in equity_values:
-        if v > peak:
-            peak = v
-        dd = (peak - v) / peak
-        max_dd = max(max_dd, dd)
-    
-    total_return = (equity_values[-1] - initial_capital) / initial_capital * 100 if equity_values else 0
-    
-    # 构建回报率曲线
+    """增强回测 - 直接调用统一主框架"""
+    payload = request.json or {}
+    market = payload.get('market', 'crypto')
+    symbol = payload.get('symbol', 'BTCUSDT')
+    strategy_key = payload.get('strategy', 'momentum')
+    start_date = payload.get('start_date', '2024-01-01')
+    end_date = payload.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    initial_capital = float(payload.get('initial_capital', 100000))
+    fee = float(payload.get('fee', 0.001))
+    slippage_bps = float(payload.get('slippage', 5))
+
+    raw = get_data(market, symbol, start_date, end_date)
+    df = to_dataframe(raw)
+    if df.empty or len(df) < 60:
+        return jsonify({'success': False, 'error': f'数据不足: {symbol}'})
+
+    if strategy_key not in STRATEGIES:
+        return jsonify({'success': False, 'error': f'未知策略: {strategy_key}'})
+
+    desc, strategy = _build_strategy(strategy_key)
+    config = BacktestConfig(
+        initial_capital=initial_capital,
+        commission=fee,
+        slippage=slippage_bps / 10000.0,
+        symbol=symbol,
+    )
+    backtester = Backtester(config)
+    result = backtester.run(df, strategy)
+
+    equity_curve = [
+        {'date': ts, 'equity': round(eq, 2)}
+        for ts, eq in zip(result['equity_timestamps'], result['equity_curve'])
+    ]
+
     returns_curve = []
-    cumulative_return = 0
-    for i, ret in enumerate(returns):
-        cumulative_return += ret
-        date_label = real_prices[i+1].get('date', f'Day {i+2}') if i+1 < len(real_prices) else f'Day {i+2}'
+    prev = None
+    cumulative = 0.0
+    for ts, eq in zip(result['equity_timestamps'], result['equity_curve']):
+        if prev is None:
+            daily_ret = 0.0
+        else:
+            daily_ret = (eq - prev) / prev if prev else 0.0
+        cumulative += daily_ret
         returns_curve.append({
-            "date": date_label,
-            "daily_return": round(ret * 100, 2),
-            "cumulative_return": round(cumulative_return * 100, 2)
+            'date': ts,
+            'daily_return': round(daily_ret * 100, 2),
+            'cumulative_return': round(cumulative * 100, 2),
         })
-    
+        prev = eq
+
+    price_data = []
+    for i, row in df.iterrows():
+        date_label = row.get('date', None)
+        if not date_label:
+            date_label = str(i)
+        price_data.append({
+            'date': date_label,
+            'open': round(float(row['open']), 4),
+            'high': round(float(row['high']), 4),
+            'low': round(float(row['low']), 4),
+            'close': round(float(row['close']), 4),
+            'volume': round(float(row.get('volume', 0)), 4),
+        })
+
+    trades = []
+    for trade in result['trades']:
+        trades.append({
+            'date': trade['time'],
+            'side': trade['side'],
+            'price': round(trade['price'], 4),
+            'quantity': round(trade['quantity'], 6),
+            'commission': round(trade['commission'], 4),
+            'pnl': round(trade.get('pnl', 0.0), 4),
+        })
+
     return jsonify({
-        "success": True,
-        "market": market,
-        "symbol": symbol,
-        "strategy": strategy,
-        "start_date": start_date,
-        "end_date": end_date,
-        "initial_capital": initial_capital,
-        "final_equity": round(equity_values[-1], 2) if equity_values else initial_capital,
-        "total_return": round(total_return, 2),
-        "equity_curve": equity_curve,
-        "returns_curve": returns_curve,
-        "price_data": real_prices,
-        "data_source": data_source,
-        "trades": trades,
-        "stats": {
-            "total_trades": len(trades),
-            "sharpe_ratio": round(sharpe, 2),
-            "max_drawdown": round(max_dd * 100, 1),
+        'success': True,
+        'market': market,
+        'symbol': symbol,
+        'strategy': strategy_key,
+        'strategy_name': desc,
+        'start_date': start_date,
+        'end_date': end_date,
+        'initial_capital': initial_capital,
+        'final_equity': round(result['final_equity'], 2),
+        'total_return': round(result['total_return'] * 100, 2),
+        'equity_curve': equity_curve,
+        'returns_curve': returns_curve,
+        'price_data': price_data,
+        'data_source': f'unified_backtest:{market}',
+        'trades': trades,
+        'stats': {
+            'total_trades': result['sell_trades'],
+            'sharpe_ratio': round(result['sharpe_ratio'], 3),
+            'max_drawdown': round(result['max_drawdown'] * 100, 2),
+            'win_rate': round(result['win_rate'] * 100, 2),
+            'profit_factor': round(result['profit_factor'], 3),
+            'total_commission': round(result['total_commission'], 2),
+            'total_slippage_cost': round(result['total_slippage_cost'], 2),
         }
+    })
+
+
+def optimize_backtest():
+    payload = request.json or {}
+    market = payload.get('market', 'crypto')
+    symbol = payload.get('symbol', 'BTCUSDT')
+    strategy_key = payload.get('strategy', 'momentum')
+    start_date = payload.get('start_date', '2024-01-01')
+    end_date = payload.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    initial_capital = float(payload.get('initial_capital', 100000))
+    param_grid = payload.get('param_grid', {})
+
+    raw = get_data(market, symbol, start_date, end_date)
+    df = to_dataframe(raw)
+    if df.empty or len(df) < 60:
+        return jsonify({'success': False, 'error': f'数据不足: {symbol}'})
+    if strategy_key not in STRATEGIES:
+        return jsonify({'success': False, 'error': f'未知策略: {strategy_key}'})
+
+    desc, func, default_params = STRATEGIES[strategy_key]
+    merged_grid = param_grid or {k: [v] for k, v in default_params.items()} or {'period': [20]}
+
+    class TunableFunctionStrategy(FunctionStrategy):
+        def __init__(self, name, signal_func, params):
+            super().__init__(name, signal_func, params)
+
+    backtester = Backtester(BacktestConfig(initial_capital=initial_capital, symbol=symbol))
+    optimizer = ParameterOptimizer(backtester)
+    results = optimizer.grid_search(
+        df,
+        lambda **params: TunableFunctionStrategy(desc, func, params),
+        merged_grid,
+        top_n=min(20, max(1, len(list(merged_grid.keys())) * 5)),
+    )
+
+    return jsonify({
+        'success': True,
+        'strategy': strategy_key,
+        'strategy_name': desc,
+        'best_params': results[0]['params'] if results else {},
+        'all_results': results,
+        'total_combinations': int(__import__('math').prod(len(v) for v in merged_grid.values())),
+    })
+
+
+def walkforward_backtest():
+    payload = request.json or {}
+    market = payload.get('market', 'crypto')
+    symbol = payload.get('symbol', 'BTCUSDT')
+    strategy_key = payload.get('strategy', 'momentum')
+    start_date = payload.get('start_date', '2024-01-01')
+    end_date = payload.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    initial_capital = float(payload.get('initial_capital', 100000))
+    train_size = int(payload.get('train_size', 120))
+    test_size = int(payload.get('test_size', 30))
+    step_size = int(payload.get('step_size', test_size))
+
+    raw = get_data(market, symbol, start_date, end_date)
+    df = to_dataframe(raw)
+    if df.empty or len(df) < (train_size + test_size):
+        return jsonify({'success': False, 'error': f'数据不足，至少需要 {train_size + test_size} 条'})
+    if strategy_key not in STRATEGIES:
+        return jsonify({'success': False, 'error': f'未知策略: {strategy_key}'})
+
+    desc, strategy = _build_strategy(strategy_key)
+    backtester = Backtester(BacktestConfig(initial_capital=initial_capital, symbol=symbol))
+    wf = backtester.walk_forward(df, strategy, train_size=train_size, test_size=test_size, step_size=step_size)
+
+    periods = []
+    for idx, window in enumerate(wf['windows'], start=1):
+        result = window['result']
+        periods.append({
+            'period': f'P{idx}',
+            'train_range': [window['train_start'], window['train_end']],
+            'test_range': [window['test_start'], window['test_end']],
+            'test_return': round(result['total_return'] * 100, 2),
+            'sharpe': round(result['sharpe_ratio'], 3),
+            'max_drawdown': round(result['max_drawdown'] * 100, 2),
+            'passed': bool(result['sharpe_ratio'] > 0 and result['max_drawdown'] < 0.2),
+        })
+
+    pass_ratio = (sum(1 for p in periods if p['passed']) / len(periods) * 100) if periods else 0
+    return jsonify({
+        'success': True,
+        'strategy': strategy_key,
+        'strategy_name': desc,
+        'periods': periods,
+        'window_count': wf['window_count'],
+        'pass_ratio': round(pass_ratio, 2),
+        'avg_total_return': round(wf['avg_total_return'] * 100, 2),
+        'avg_max_drawdown': round(wf['avg_max_drawdown'] * 100, 2),
+        'avg_sharpe_ratio': round(wf['avg_sharpe_ratio'], 3),
+        'wf_score': 'PASS' if pass_ratio >= 60 else 'FAIL',
     })
 
 
@@ -284,36 +240,28 @@ def register_enhanced_routes(app):
     """注册增强路由"""
     app.add_url_rule('/api/enhanced/markets', 'get_markets', get_markets, methods=['GET'])
     app.add_url_rule('/api/enhanced/strategies', 'get_strategies', get_strategies, methods=['GET'])
-
-    @app.route("/api/enhanced/kline", methods=["GET"])
-    def get_kline():
-        market = request.args.get("market", "a_stock")
-        symbol = request.args.get("symbol", "sz.399006")
-        limit = request.args.get("limit", 100)
-        
-        try:
-            if market == "a_stock" and dm:
-                df = dm.get_a_stock_klines(symbol, "2024-01-01", "2026-01-06")
-                if df is not None and len(df) > 0:
-                    df = df.tail(int(limit))
-                    return jsonify(df.to_dict("records"))
-        except:
-            pass
-        
-        import random
-        data = []
-        base = 50000
-        for i in range(int(limit)):
-            o = base + random.uniform(-1000, 1000)
-            h = o + random.uniform(0, 500)
-            l = o - random.uniform(0, 500)
-            c = o + random.uniform(-500, 500)
-            data.append({
-                "time": f"2024-{(i//30)+1:02d}-{(i%30)+1:02d}",
-                "open": o, "high": h, "low": l, "close": c,
-                "volume": random.uniform(1000000, 5000000)
-            })
-            base = c
-        
-        return jsonify(data)
     app.add_url_rule('/api/enhanced/backtest', 'run_enhanced_backtest', run_enhanced_backtest, methods=['POST'])
+    app.add_url_rule('/api/backtest/optimize', 'optimize_backtest', optimize_backtest, methods=['POST'])
+    app.add_url_rule('/api/backtest/walkforward', 'walkforward_backtest', walkforward_backtest, methods=['POST'])
+
+    @app.route('/api/enhanced/kline', methods=['GET'])
+    def get_kline():
+        market = request.args.get('market', 'a_stock')
+        symbol = request.args.get('symbol', 'sz.399006')
+        limit = int(request.args.get('limit', 100))
+        raw = get_data(market, symbol, '2024-01-01', datetime.now().strftime('%Y-%m-%d'))
+        df = to_dataframe(raw)
+        if df.empty:
+            return jsonify([])
+        df = df.tail(limit).reset_index(drop=True)
+        data = []
+        for i, row in df.iterrows():
+            data.append({
+                'time': str(i),
+                'open': round(float(row['open']), 4),
+                'high': round(float(row['high']), 4),
+                'low': round(float(row['low']), 4),
+                'close': round(float(row['close']), 4),
+                'volume': round(float(row.get('volume', 0)), 4),
+            })
+        return jsonify(data)

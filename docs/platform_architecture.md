@@ -30,11 +30,12 @@ A股数据 | 加密货币 | 外汇 | 因子数据
 | 模块 | 现有 | 目标 |
 |------|------|------|
 | Web前端 | Dashboard | ✅ 需增强 |
-| 回测引擎 | unified_backtest.py | ✅ |
+| 回测引擎 | backtest_framework.py | ✅ 主框架 |
+| 回测入口 | unified_backtest.py | ✅ 统一入口 |
 | 策略管理 | strategies/ | ✅ 需UI |
 | 数据接口 | data_manager.py | ✅ |
 | 风控 | risk_logger.py | ✅ 需UI |
-| 参数优化 | parameter_optimizer.py | ✅ 需UI |
+| 参数优化 | parameter_optimizer.py | ✅ 已并入主框架链 |
 
 ## 四、需要开发的UI
 

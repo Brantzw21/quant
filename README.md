@@ -169,7 +169,36 @@ if signals.count("BUY") >= 2:
 
 ---
 
-## 五、使用指南
+## 五、回测主链（2026-03 更新）
+
+### 5.1 默认回测框架
+
+当前项目的默认回测主链已经统一为：
+
+```text
+backtest_framework.py   # 唯一主回测框架
+unified_backtest.py     # 多市场统一回测入口
+parameter_optimizer.py  # 统一参数优化入口
+```
+
+### 5.2 模块定位
+
+| 文件 | 定位 | 说明 |
+|------|------|------|
+| `backtest_framework.py` | 主框架 | 默认唯一回测内核 |
+| `unified_backtest.py` | 入口层 | 多市场/多策略统一调用主框架 |
+| `parameter_optimizer.py` | 优化层 | 基于主框架做真实参数搜索 |
+| `dashboard/enhanced_backtest.py` | API层 | Dashboard 回测接口，底层调用主框架 |
+| `backtest_engine.py` | 兼容层 | 为历史导入保留，不再作为新开发主入口 |
+
+### 5.3 开发约定
+
+- 新增回测能力，默认改 `backtest_framework.py`
+- 新增多市场调用或策略对比，默认改 `unified_backtest.py`
+- 新增参数搜索能力，默认改 `parameter_optimizer.py`
+- 不再新增独立回测引擎脚本，避免再次出现多套实现分叉
+
+## 六、使用指南
 
 ### 5.1 启动命令
 

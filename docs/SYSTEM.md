@@ -105,33 +105,34 @@ brokers/binance_broker.py  - Binance 接口
 ### 2.5 回测引擎 (Backtest Engine)
 
 ```
-backtest_engine.py   - 回测主引擎
-position_sizer.py    - 仓位计算
-execution_simulator.py - 执行模拟
+backtest_framework.py    - 默认主回测框架
+unified_backtest.py      - 多市场统一入口
+parameter_optimizer.py   - 统一参数优化入口
+backtest_engine.py       - 兼容层（历史入口保留）
+position_sizer.py        - 仓位计算
+execution_simulator.py   - 执行模拟
 ```
 
-**分层架构：**
+**当前主链：**
 
 ```
-backtest_engine (主控)
+backtest_framework (主内核)
      ↓
-strategy_agent (策略信号)
+unified_backtest (统一入口)
      ↓
-risk_manager (ATR 动态止盈止损)
+parameter_optimizer (优化入口)
      ↓
-position_sizer (比例仓位 20%)
-     ↓
-execution_simulator (手续费+滑点)
+dashboard/enhanced_backtest (API层)
 ```
 
 **回测特性：**
-- ✅ 手续费 0.04%
-- ✅ 滑点 0.05%
-- ✅ 比例仓位 20%
-- ✅ ATR 动态止盈止损
+- ✅ 手续费 / maker-taker 支持
+- ✅ 滑点成本模拟
+- ✅ 最小成交额约束
 - ✅ 权益曲线计算
-- ✅ 最大回撤计算
-- ✅ Sharpe 比率
+- ✅ 最大回撤 / 夏普 / 波动率 / 利润因子
+- ✅ Walk-forward 支持
+- ✅ 参数网格搜索
 
 ---
 

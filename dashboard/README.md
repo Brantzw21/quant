@@ -1,16 +1,24 @@
-# React + Vite
+# Dashboard API Notes
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Backtest Mainline
 
-Currently, two official plugins are available:
+Dashboard backtest endpoints now use the unified project backtest mainline:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `backtest_framework.py` - core engine
+- `unified_backtest.py` - market/strategy entry
+- `parameter_optimizer.py` - parameter search
+- `dashboard/enhanced_backtest.py` - dashboard API adapter
 
-## React Compiler
+## Supported endpoints
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `POST /api/enhanced/backtest`
+- `POST /api/backtest/optimize`
+- `POST /api/backtest/walkforward`
+- `GET /api/enhanced/markets`
+- `GET /api/enhanced/strategies`
 
-## Expanding the ESLint configuration
+## Notes
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Old random/mock optimizer and walk-forward routes have been removed.
+- If you add new backtest capability for dashboard, extend `dashboard/enhanced_backtest.py` first.
+- Do not add a new standalone backtest engine under `dashboard/`.

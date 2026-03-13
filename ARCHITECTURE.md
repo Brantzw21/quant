@@ -89,11 +89,12 @@ quant_v2/
 │
 ├── ┌────────────────────── 回测与优化 ──────────────────────┐
 │   │
-│   ├── run_backtest.py       # 通用回测引擎
-│   ├── backtest_strategies.py # 多策略对比
-│   ├── parameter_optimizer.py # 参数优化
+│   ├── backtest_framework.py  # 默认主回测框架 ⭐
+│   ├── unified_backtest.py    # 多市场统一回测入口
+│   ├── parameter_optimizer.py # 统一参数优化入口
+│   ├── run_backtest.py        # 历史脚本 / 可逐步并轨
 │   ├── portfolio_optimizer.py # 组合优化
-│   └── position_sizer.py     # 仓位计算
+│   └── position_sizer.py      # 仓位计算
 │
 ├── ┌────────────────────── 策略库 ──────────────────────────┐
 │   │
@@ -208,7 +209,17 @@ else:
 
 ---
 
-### 4.4 run_backtest.py (回测引擎)
+### 4.4 backtest_framework.py (默认主回测框架)
+
+**职责:** 统一执行成本、权益曲线、参数优化、walk-forward 的主回测内核
+
+**当前主链:**
+
+```text
+backtest_framework.py   -> 主回测内核
+unified_backtest.py     -> 多市场统一入口
+parameter_optimizer.py  -> 参数优化入口
+```
 
 **职责:** 多策略历史回测与风险分析
 
