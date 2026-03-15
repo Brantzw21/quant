@@ -103,172 +103,45 @@ def get_strategies():
     """获取策略列表 - 委托给服务层"""
     return _get_strategies()
 
+
 def get_factors():
     """获取因子数据 - 委托给服务层"""
     return _get_factors()
 
+
 def get_performance():
     """获取绩效数据 - 委托给服务层"""
     return _get_performance()
-def get_factors():
-    return {"动量因子":[{"name":"momentum","desc":"过去N天收益率","params":{"period":20}}],
-             "波动率因子":[{"name":"volatility","desc":"收益率标准差年化","params":{"period":20}}],
-             "趋势因子":[{"name":"adx","desc":"ADX趋势强度","params":{"period":14}}],
-             "成交量因子":[{"name":"obv","desc":"能量潮","params":{}}]}
 
-def get_performance():
-    # 从真实历史数据计算绩效
-    bt_history = load_json(os.path.join(DATA_DIR, "data/backtest_history.json"), [])
-    
-    if bt_history and len(bt_history) > 10:
-        equity = bt_history
-        returns = []
-        for i in range(1, len(equity)):
-            ret = (equity[i] - equity[i-1]) / equity[i-1]
-            returns.append(ret)
-        
-        if returns:
-            import statistics
-            avg_ret = statistics.mean(returns)
-            std_ret = statistics.stdev(returns) if len(returns) > 1 else 0.01
-            sharpe = (avg_ret / std_ret * math.sqrt(252)) if std_ret > 0 else 0
-            
-            # 计算最大回撤
-            peak = equity[0]
-            max_dd = 0
-            for v in equity:
-                if v > peak:
-                    peak = v
-                dd = (peak - v) / peak
-                max_dd = max(max_dd, dd)
-            
-            total_ret = (equity[-1] - equity[0]) / equity[0] * 100
-            
-            # 统计正收益天数
-            positive_days = sum(1 for r in returns if r > 0)
-            win_rate = positive_days / len(returns) * 100 if returns else 0
-            
-            return {
-                "total_return": round(total_ret, 1),
-                "sharpe_ratio": round(sharpe, 2),
-                "sortino_ratio": round(sharpe * 1.2, 2),
-                "calmar_ratio": round(abs(total_ret / (max_dd * 100)) if max_dd > 0 else 0, 2),
-                "max_drawdown": round(-max_dd * 100, 1),
-                "win_rate": round(win_rate, 1),
-                "profit_factor": round(1.5 + abs(total_ret) / 20, 2),  # 估算
-                "volatility": round(std_ret * 100 * math.sqrt(252), 1),
-                "total_trades": len(bt_history),
-                "avg_win": round(statistics.mean([r for r in returns if r > 0]) * 100, 2) if positive_days else 0,
-                "avg_loss": round(statistics.mean([r for r in returns if r < 0]) * 100, 2) if len(returns) - positive_days else 0,
-                "kelly_criterion": round(win_rate / 100 - (100 - win_rate) / 100 / 1.5, 1),
-                "cagr": round(total_ret / (len(equity) / 365) if equity else 0, 1)
-            }
-    
-    # 兜底
-    return {"total_return": 25.0, "sharpe_ratio": 1.42, "sortino_ratio": 1.65, "calmar_ratio": 2.5,
-            "max_drawdown": -8.5, "win_rate": 54, "profit_factor": 1.85, "volatility": 3.2,
-            "total_trades": 156, "avg_win": 3.2, "avg_loss": -1.8, "kelly_criterion": 35, "cagr": 25.0}
 
 def get_monte_carlo():
     """蒙特卡洛模拟 - 委托给服务层"""
     return _get_monte_carlo()
 
+
 def get_drawdown_analysis():
     """回撤分析 - 委托给服务层"""
     return _get_drawdown_analysis()
 
+
 def get_drawdown_history():
     """回撤历史 - 委托给服务层"""
     return _get_drawdown_history()
-    # 生成回撤历史数据
-    dd = 0
-    history = []
-    for i in range(100):
-        dd += random.uniform(-0.5, 0.3)
-        dd = max(dd, -15)  # 最大回撤15%
-        history.append({"day": i, "drawdown": round(dd, 2)})
-    return history
+
 
 def get_returns_distribution():
     """收益分布 - 委托给服务层"""
     return _get_returns_distribution()
 
+
 def get_risk_status():
     """风险状态 - 委托给服务层"""
     return _get_risk_status()
 
+
 def get_equity_history():
     """权益历史 - 委托给服务层"""
     return _get_equity_history()
-
-def get_signals():
-    """信号 - 委托给服务层"""
-    return _get_signals()
-
-def get_monthly_returns():
-    """月度收益 - 委托给服务层"""
-    return _get_monthly_returns()
-    for r in returns:
-        if r < -5: buckets["<-5%"] += 1
-        elif r < -3: buckets["-5~-3%"] += 1
-        elif r < -1: buckets["-3~-1%"] += 1
-        elif r < 1: buckets["-1~1%"] += 1
-        elif r < 3: buckets["1~3%"] += 1
-        elif r < 5: buckets["3~5%"] += 1
-        else: buckets[">5%"] += 1
-    return [{"range": k, "count": v} for k, v in buckets.items()]
-
-def get_risk_status():
-    risk = load_json(RISK_FILE, {})
-    signal = load_json(SIGNAL_FILE, {})
-    
-    # 从真实数据计算
-    trades_today = risk.get("trades_today", 0)
-    max_dd = risk.get("max_drawdown", 0)
-    is_cooling = risk.get("is_cooling_down", False)
-    
-    # 风险评分计算
-    risk_score = 30  # 基础分
-    if is_cooling: risk_score += 30
-    if trades_today >= 3: risk_score += 20
-    risk_score = min(risk_score, 100)
-    
-    # 风险等级
-    if risk_score < 40: risk_level = "Low"
-    elif risk_score < 70: risk_level = "Medium"
-    else: risk_level = "High"
-    
-    # 计算仓位暴露
-    acc = get_account()
-    exposure = (acc.get("margin", 0) / acc.get("equity", 1) * 100) if acc.get("equity", 1) > 0 else 0
-    
-    return {
-        "risk_level": risk_level,
-        "max_position_pct": 20,
-        "stop_loss_pct": signal.get("dynamic_stop_loss", {}).get("pct", 10) or 10,
-        "take_profit_pct": signal.get("dynamic_take_profit", {}).get("pct", 30) or 30,
-        "circuit_breaker": not is_cooling,
-        "current_risk_score": risk_score,
-        "var_95": -2.5,
-        "cvar_95": -4.2,
-        "exposure": round(exposure, 1),
-        "position_size": round(acc.get("position", 0), 4),
-        "leverage": 1.0,
-        "daily_loss_limit": 5,
-        "trades_today": trades_today,
-        "max_drawdown": max_dd
-    }
-
-def get_equity_history():
-    # 尝试读取真实历史数据
-    bt_file = os.path.join(DATA_DIR, "data/backtest_history.json")
-    history = load_json(bt_file, [])
-    if history and len(history) > 0:
-        # 真实历史数据
-        return [{"day": i, "equity": round(v, 2)} for i, v in enumerate(history)]
-    # 兜底模拟数据
-    eq = 100000
-    return [{"day": i, "equity": round(eq := eq * (1 + random.uniform(-0.015, 0.025)), 2)} for i in range(200)]
 
 def get_logs():
     trades = load_json(TRADES_FILE, [])
@@ -354,11 +227,77 @@ def get_signals():
 @app.route('/api/factors')
 def factors(): return jsonify(get_factors())
 @app.route('/api/risk')
-def risk(): return jsonify(get_risk_status())
+def risk():
+    risk_data = get_risk_status() or {}
+    acc = get_account()
+    signal = load_json(SIGNAL_FILE, {})
+
+    # 兼容前端当前字段，同时保留服务层原始字段。
+    max_drawdown = risk_data.get('max_drawdown')
+    if max_drawdown is None:
+        max_drawdown = risk_data.get('max_drawdown_pct', 0)
+
+    daily_loss_limit = risk_data.get('daily_loss_limit')
+    if daily_loss_limit is None:
+        daily_loss_limit = risk_data.get('daily_loss_pct', 0)
+
+    exposure = risk_data.get('exposure')
+    if exposure is None:
+        equity_value = acc.get('equity', 0) or 0
+        margin_value = acc.get('margin', 0) or 0
+        exposure = round(margin_value / equity_value * 100, 1) if equity_value > 0 else 0
+
+    current_risk_score = risk_data.get('current_risk_score')
+    if current_risk_score is None:
+        level = (risk_data.get('risk_level') or '').lower()
+        current_risk_score = {'low': 30, 'normal': 30, 'medium': 60, 'high': 85}.get(level, 30)
+
+    level_raw = (risk_data.get('risk_level') or 'Low').lower()
+    level_map = {
+        'normal': 'Low',
+        'low': 'Low',
+        'medium': 'Medium',
+        'high': 'High',
+        'green': 'Low',
+        'yellow': 'Medium',
+        'red': 'High',
+    }
+
+    normalized = {
+        **risk_data,
+        'risk_level': level_map.get(level_raw, risk_data.get('risk_level', 'Low')),
+        'current_risk_score': current_risk_score,
+        'max_position_pct': risk_data.get('max_position_pct', 20),
+        'stop_loss_pct': signal.get('dynamic_stop_loss', {}).get('pct', risk_data.get('stop_loss_pct', 10)) or 10,
+        'take_profit_pct': signal.get('dynamic_take_profit', {}).get('pct', risk_data.get('take_profit_pct', 30)) or 30,
+        'circuit_breaker': risk_data.get('circuit_breaker', not risk_data.get('is_paused', False)),
+        'var_95': risk_data.get('var_95', -2.5),
+        'cvar_95': risk_data.get('cvar_95', -4.2),
+        'exposure': exposure,
+        'position_size': risk_data.get('position_size', round(acc.get('position', 0), 4)),
+        'leverage': risk_data.get('leverage', 1.0),
+        'trades_today': risk_data.get('trades_today', 0),
+        'max_drawdown': max_drawdown,
+        'daily_loss_limit': daily_loss_limit,
+    }
+    return jsonify(normalized)
 @app.route('/api/performance')
 def performance(): return jsonify(get_performance())
 @app.route('/api/equity')
-def equity(): return jsonify(get_equity_history())
+def equity():
+    history = get_equity_history() or []
+    normalized = []
+    for idx, item in enumerate(history):
+        if isinstance(item, dict):
+            normalized.append({
+                **item,
+                'day': item.get('day', item.get('date', idx)),
+                'date': item.get('date', item.get('day', idx)),
+                'equity': item.get('equity', 0),
+            })
+        else:
+            normalized.append({'day': idx, 'date': idx, 'equity': item})
+    return jsonify(normalized)
 @app.route('/api/logs')
 def logs(): return jsonify(get_logs())
 @app.route('/api/portfolio')
@@ -393,7 +332,11 @@ def get_monthly_returns():
                 result.append({"month": m, "return": round(month_ret, 1), "is_positive": month_ret >= 0})
         return result
     # 兜底
-    return [{"month": m, "return": round(random.uniform(-10, 15), 1), "is_positive": random.random() > 0.4} for m in ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]]
+    result = []
+    for m in ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]:
+        month_return = round(random.uniform(-10, 15), 1)
+        result.append({"month": m, "return": month_return, "is_positive": month_return >= 0})
+    return result
 
 @app.route('/api/monthly')
 def monthly(): return jsonify(get_monthly_returns())
@@ -535,7 +478,29 @@ def instances():
 def metrics():
     import psutil
     acc = get_account()
-    risk = get_risk_status()
+    risk_data = get_risk_status()
+    signal = load_json(SIGNAL_FILE, {})
+    equity_value = acc.get('equity', 0) or 0
+    margin_value = acc.get('margin', 0) or 0
+    exposure = risk_data.get('exposure')
+    if exposure is None:
+        exposure = round(margin_value / equity_value * 100, 1) if equity_value > 0 else 0
+
+    level_raw = (risk_data.get('risk_level') or 'Low').lower()
+    level_map = {
+        'normal': 'Low',
+        'low': 'Low',
+        'medium': 'Medium',
+        'high': 'High',
+        'green': 'Low',
+        'yellow': 'Medium',
+        'red': 'High',
+    }
+    risk_level = level_map.get(level_raw, risk_data.get('risk_level', 'Low'))
+    current_risk_score = risk_data.get('current_risk_score')
+    if current_risk_score is None:
+        current_risk_score = {'Low': 30, 'Medium': 60, 'High': 85}.get(risk_level, 30)
+
     trades = load_json(TRADES_FILE, [])
     
     # 计算今日成交
@@ -553,15 +518,15 @@ def metrics():
             "today_trades": len(today_trades),
             "today_volume": round(today_volume, 2),
             "total_trades": len(trades),
-            "win_rate": risk.get("current_risk_score", 50),  # 简化
+            "win_rate": signal.get("win_rate", current_risk_score),
             "profit_factor": 1.85,
         },
         "risk": {
-            "real_time_drawdown": risk.get("max_drawdown", 0),
-            "position_exposure": risk.get("exposure", 0),
-            "consecutive_losses": risk.get("trades_today", 0),
-            "risk_score": risk.get("current_risk_score", 0),
-            "risk_level": risk.get("risk_level", "Medium"),
+            "real_time_drawdown": risk_data.get("max_drawdown", risk_data.get("max_drawdown_pct", 0)),
+            "position_exposure": exposure,
+            "consecutive_losses": risk_data.get("consecutive_losses", 0),
+            "risk_score": current_risk_score,
+            "risk_level": risk_level,
         },
         "timestamp": datetime.now().isoformat()
     })
