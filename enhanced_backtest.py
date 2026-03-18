@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
-from backtest_framework import Backtester, BacktestConfig
+from backtest_framework import Backtester, BacktestConfig, ParameterOptimizer
 
 
 class EnhancedBacktestEngine(Backtester):
@@ -22,7 +22,7 @@ class EnhancedBacktestEngine(Backtester):
         super().__init__(config or BacktestConfig())
 
 
-__all__ = ['EnhancedBacktestEngine', 'BacktestConfig']
+__all__ = ['EnhancedBacktestEngine', 'BacktestConfig', 'ParameterOptimizer']
 
 
 if __name__ == '__main__':

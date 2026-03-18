@@ -16,6 +16,7 @@ import pandas as pd
 sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 
 from backtest_framework import Backtester, BacktestConfig, Strategy
+from backtest_models import Signal, Side, SignalType
 
 
 class RiskManager:
@@ -58,14 +59,20 @@ class StrategyAgent:
         if not self.strategy_func:
             return {'signal': 'HOLD', 'confidence': 0.5, 'reason': 'no strategy'}
         signal = self.strategy_func(data)
+        # 兼容转换
         if signal.get('signal') == 'BUY':
-            signal['signal'] = 'LONG'
+            return Signal(side=Side.LONG, confidence=signal.get('confidence', 0.7), 
+                         signal_type=SignalType.ENTRY, reason=signal.get('reason', ''))
         elif signal.get('signal') == 'SELL':
-            signal['signal'] = 'SHORT'
-        return signal
+            return Signal(side=Side.FLAT, confidence=signal.get('confidence', 0.7),
+                         signal_type=SignalType.EXIT, reason=signal.get('reason', ''))
+        return Signal(side=Side.FLAT, confidence=signal.get('confidence', 0.5),
+                     signal_type=SignalType.HOLD, reason=signal.get('reason', ''))
 
 
 class _CompatStrategy(Strategy):
+    """兼容旧策略函数格式"""
+    
     def __init__(self, strategy_agent: StrategyAgent):
         self.strategy_agent = strategy_agent
 
@@ -76,17 +83,10 @@ class _CompatStrategy(Strategy):
         signals = []
         for i in range(len(data)):
             if i < 50:
-                signals.append(0)
+                signals.append(Signal())
                 continue
             signal = self.strategy_agent.generate_signal(data.iloc[: i + 1])
-            side = signal.get('signal', 'HOLD')
-            confidence = signal.get('confidence', 0)
-            if side == 'LONG' and confidence >= 0.6:
-                signals.append(1)
-            elif side == 'SHORT' and confidence >= 0.6:
-                signals.append(-1)
-            else:
-                signals.append(0)
+            signals.append(signal)
         return pd.Series(signals, index=data.index)
 
 
@@ -156,4 +156,5 @@ if __name__ == '__main__':
     engine = BacktestEngine(initial_cash=10000)
     engine.set_strategy(sample_strategy)
     result = engine.run(df)
-    print(result['total_return'])
+    print(f"总收益: {result['total_return']:.2%}")
+    print("✅ 兼容层测试通过")

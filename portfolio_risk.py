@@ -46,7 +46,7 @@ class RiskLimit:
     max_single_position: float = 0.3     # 最大单一持仓比例
     max_correlation: float = 0.7          # 最大持仓相关性
     max_leverage: float = 3.0
-aily_loss: float = 0.05          # 最大日亏损 (5%)
+    max_daily_loss: float = 0.05          # 最大日亏损 (5%)
     max_drawdown: float = 0.15            # 最大回撤 (15%)
     min_diversification: int = 3          # 最小分散度 (持仓数)
 

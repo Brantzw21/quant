@@ -71,8 +71,8 @@ class PerformanceAnalyzer:
     
     def annualized_return(self, periods_per_year: int = 252) -> float:
         """年化收益率"""
-        if not self.returns.any() or len(self.0:
-            returnreturns) ==  0
+        if not self.returns.any() or len(self.returns) == 0:
+            return 0
         
         total = np.sum(self.returns)
         n = len(self.returns)

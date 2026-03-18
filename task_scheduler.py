@@ -300,8 +300,8 @@ if __name__ == "__main__":
     create_report_task(scheduler)
     create_backup_task(scheduler)
     
-任务
-    def    # 添加自定义 my_task():
+    # 添加自定义任务
+    def my_task():
         print(f"🕐 自定义任务执行: {datetime.now()}")
         return "OK"
     

@@ -2,6 +2,8 @@
 """
 Walk-Forward 回测分析
 验证策略在样本外数据的表现
+
+基于统一回测框架 backtest_framework.py
 """
 
 import sys
@@ -11,9 +13,12 @@ sys.path.insert(0, '/root/.openclaw/workspace/quant/quant')
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from light_strategy import generate_signal, calculate_indicators, analyze_trend
-from data_manager import DataManager
+from typing import Optional, Dict, List
 import json
+
+from backtest_framework import Backtester, BacktestConfig
+from data_pipeline import DataPipeline, prepare_data
+
 
 class WalkForwardAnalyzer:
     """
@@ -26,167 +31,257 @@ class WalkForwardAnalyzer:
     滚动窗口执行
     """
     
-    def __init__(self, symbol="BTCUSDT", intervals=["4h"]):
-        self.symbol = symbol
-        self.intervals = intervals
-        self.dm = DataManager()
+    def __init__(self, 
+                 config: BacktestConfig = None,
+                 train_periods: int = 90,    # 样本内周期数
+                 test_periods: int = 30,      # 样本外周期数
+                 step_periods: int = 15):    # 滚动步长
+        """
+        Args:
+            config: 回测配置
+            train_periods: 样本内数据点数
+            test_periods: 样本外数据点数
+            step_periods: 滚动步长
+        """
+        self.config = config or BacktestConfig()
+        self.train_periods = train_periods
+        self.test_periods = test_periods
+        self.step_periods = step_periods
         
-        # Walk-Forward 参数
-        self.is_period_days = 90   # 样本内天数 (参数优化)
-        self.oos_period_days = 30   # 样本外天数 (验证)
-        self.step_days = 15         # 滚动步长
-        
-    def get_data(self, start_date, end_date):
-        """获取历史数据"""
-        df = self.dm.get_binance_klines(
-            symbol=self.symbol,
-            interval="4h",
-            start=start_date,
-            end=end_date
-        )
-        return df
+        self.pipeline = DataPipeline()
+        self.results: List[Dict] = []
     
-    def run_strategy_on_data(self, df):
-        """在数据上运行策略"""
-        if len(df) < 50:
-            return []
+    def run(self, 
+            data: pd.DataFrame, 
+            strategy,
+            indicators: List[str] = None,
+            validate: bool = True) -> Dict:
+        """
+        运行 Walk-Forward 分析
         
-        df = calculate_indicators(df.copy())
-        
-        signals = []
-        for i in range(50, len(df)):
-            row = df.iloc[i]
-            analysis = analyze_trend(df.iloc[:i+1])
+        Args:
+            data: 原始数据
+            strategy: 策略实例
+            indicators: 需要添加的技术指标
+            validate: 是否验证数据
             
-            signals.append({
-                "date": str(df.index[i]) if hasattr(df.index, '__getitem__') else str(row.name),
-                "price": row['close'],
-                "signal": "BUY" if analysis.get('trend_up') and analysis.get('trend_strong') else "SELL" if analysis.get('trend_down') and analysis.get('trend_strong') else "HOLD",
-                "trend": analysis.get('trend'),
-                "rsi": analysis.get('rsi'),
-                "adx": analysis.get('adx')
-            })
+        Returns:
+            分析结果字典
+        """
+        # 数据预处理
+        if validate:
+            df = self.pipeline.process(data)
+            is_valid, errors = self.pipeline.validate_ohlcv(df)
+            if not is_valid:
+                print(f"⚠️ 数据验证警告: {errors}")
+        else:
+            df = data.copy()
         
-        return signals
-    
-    def calculate_returns(self, signals, initial_capital=10000):
-        """计算策略收益"""
-        capital = initial_capital
-        position = 0
-        trades = []
+        # 添加指标
+        if indicators:
+            df = self.pipeline.add_indicators(df, indicators)
         
-        for i, sig in enumerate(signals):
-            if sig['signal'] == 'BUY' and position == 0:
-                position = capital / sig['price']
-                capital = 0
-                trades.append({"type": "BUY", "price": sig['price'], "date": sig['date']})
-            elif sig['signal'] == 'SELL' and position > 0:
-                capital = position * sig['price']
-                trades.append({"type": "SELL", "price": sig['price'], "date": sig['date'], "pnl": capital - trades[-1]['price'] * position})
-                position = 0
+        # 检查数据量
+        min_required = self.train_periods + self.test_periods
+        if len(df) < min_required:
+            return {
+                'error': f'数据量不足: {len(df)} < {min_required}',
+                'windows': []
+            }
         
-        # 最终持仓
-        if position > 0:
-            capital = position * signals[-1]['price']
+        # 滚动窗口
+        windows = []
+        start = 0
         
-        total_return = (capital - initial_capital) / initial_capital * 100
-        return {
-            "total_return": total_return,
-            "final_capital": capital,
-            "num_trades": len(trades),
-            "trades": trades
-        }
-    
-    def run(self, start_date, end_date):
-        """运行Walk-Forward分析"""
-        print(f"📊 Walk-Forward 分析: {start_date} ~ {end_date}")
-        
-        # 获取全量数据
-        df = self.get_data(start_date, end_date)
-        
-        if len(df) < self.is_period_days + self.oos_period_days:
-            print("数据不足")
-            return None
-        
-        results = []
-        current_start = start_date
-        
-        while True:
-            # 样本内期间
-            is_end = current_start + timedelta(days=self.is_period_days)
-            # 样本外期间
-            oos_end = is_end + timedelta(days=self.oos_period_days)
+        while start + self.train_periods + self.test_periods <= len(df):
+            # 分割数据
+            train_end = start + self.train_periods
+            test_end = train_end + self.test_periods
             
-            if oos_end > end_date:
-                break
+            train_df = df.iloc[start:train_end].copy()
+            test_df = df.iloc[train_end:test_end].copy()
             
-            # 获取样本内数据（用于参数优化模拟）
-            is_data = df[(df.index >= current_start) & (df.index < is_end)]
-            # 获取样本外数据（用于验证）
-            oos_data = df[(df.index >= is_end) & (df.index < oos_end)]
+            # 在样本外数据上回测
+            bt = Backtester(self.config)
             
-            if len(is_data) < 50 or len(oos_data) < 20:
-                current_start += timedelta(days=self.step_days)
-                continue
+            try:
+                result = bt.run(test_df, strategy)
+                
+                windows.append({
+                    'train_start': start,
+                    'train_end': train_end - 1,
+                    'test_start': train_end,
+                    'test_end': test_end - 1,
+                    'result': result,
+                })
+                
+                print(f"  窗口 [{train_end}~{test_end-1}]: "
+                      f"收益={result.get('total_return', 0):.2%}, "
+                      f"夏普={result.get('sharpe_ratio', 0):.2f}")
+                
+            except Exception as e:
+                print(f"  窗口 [{train_end}~{test_end-1}] 失败: {e}")
+                windows.append({
+                    'train_start': start,
+                    'train_end': train_end - 1,
+                    'test_start': train_end,
+                    'test_end': test_end - 1,
+                    'error': str(e),
+                })
             
-            # 在样本外数据上运行策略
-            oos_signals = self.run_strategy_on_data(oos_data)
-            oos_returns = self.calculate_returns(oos_signals)
-            
-            results.append({
-                "period": f"{is_end.strftime('%Y-%m-%d')}~{oos_end.strftime('%Y-%m-%d')}",
-                "is_start": str(current_start.date()),
-                "is_end": str(is_end.date()),
-                "oos_start": str(is_end.date()),
-                "oos_end": str(oos_end.date()),
-                "oos_return": oos_returns['total_return'],
-                "oos_trades": oos_returns['num_trades'],
-                "final_capital": oos_returns['final_capital']
-            })
-            
-            print(f"  {is_end.strftime('%Y-%m-%d')}~{oos_end.strftime('%Y-%m-%d')}: "
-                  f"OOS收益={oos_returns['total_return']:.2f}%, 交易数={oos_returns['num_trades']}")
-            
-            current_start += timedelta(days=self.step_days)
+            start += self.step_periods
         
-        # 汇总
-        if results:
-            avg_return = np.mean([r['oos_return'] for r in results])
-            win_rate = len([r for r in results if r['oos_return'] > 0]) / len(results) * 100
+        # 聚合统计
+        valid_results = [w['result'] for w in windows if 'result' in w]
+        
+        if valid_results:
+            returns = [r['total_return'] for r in valid_results]
+            drawdowns = [r['max_drawdown'] for r in valid_results]
+            sharpes = [r['sharpe_ratio'] for r in valid_results]
             
             summary = {
-                "start_date": start_date.strftime('%Y-%m-%d'),
-                "end_date": end_date.strftime('%Y-%m-%d'),
-                "num_periods": len(results),
-                "avg_oos_return": round(avg_return, 2),
-                "win_rate": round(win_rate, 2),
-                "results": results
+                'windows': windows,
+                'window_count': len(windows),
+                'valid_windows': len(valid_results),
+                'avg_total_return': float(np.mean(returns)),
+                'std_total_return': float(np.std(returns)),
+                'avg_max_drawdown': float(np.mean(drawdowns)),
+                'avg_sharpe_ratio': float(np.mean(sharpes)),
+                'win_rate': len([r for r in returns if r > 0]) / len(returns),
+                'best_return': float(max(returns)),
+                'worst_return': float(min(returns)),
             }
-            
-            print(f"\n📈 汇总:")
-            print(f"  平均样本外收益: {avg_return:.2f}%")
-            print(f"  胜率: {win_rate:.1f}%")
-            
-            return summary
+        else:
+            summary = {
+                'windows': windows,
+                'window_count': len(windows),
+                'valid_windows': 0,
+                'error': 'No valid windows completed'
+            }
         
+        self.results = windows
+        return summary
+    
+    def save_results(self, filepath: str):
+        """保存结果到文件"""
+        os.makedirs(os.path.dirname(filepath) or '.', exist_ok=True)
+        with open(filepath, 'w') as f:
+            json.dump(self.results, f, indent=2, ensure_ascii=False)
+        return filepath
+
+
+def run_walkforward(symbol: str = "BTCUSDT", 
+                    interval: str = "4h",
+                    start_date: str = None,
+                    end_date: str = None,
+                    capital: float = 10000):
+    """
+    便捷运行函数
+    
+    Args:
+        symbol: 交易对
+        interval: K线周期
+        start_date: 开始日期
+        end_date: 结束日期
+        capital: 初始资金
+    """
+    from data_manager import DataManager
+    
+    dm = DataManager()
+    
+    # 默认最近2年
+    if not end_date:
+        end_date = datetime.now()
+    if not start_date:
+        start_date = end_date - timedelta(days=730)
+    
+    # 获取数据
+    print(f"📊 获取数据: {symbol} {interval}")
+    df = dm.get_binance_klines(
+        symbol=symbol,
+        interval=interval,
+        start=start_date.strftime('%Y-%m-%d'),
+        end=end_date.strftime('%Y-%m-%d')
+    )
+    
+    if df is None or len(df) < 200:
+        print("❌ 数据获取失败或数据量不足")
         return None
-
-def main():
-    """主函数"""
-    # 最近2年数据
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=730)
     
-    analyzer = WalkForwardAnalyzer(symbol="BTCUSDT")
-    results = analyzer.run(start_date, end_date)
+    # 策略
+    from light_strategy import generate_signal, calculate_indicators
     
-    if results:
-        # 保存结果
-        output_file = "/root/.openclaw/workspace/quant/quant/logs/walkforward_results.json"
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        with open(output_file, 'w') as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
-        print(f"\n✅ 结果已保存到 {output_file}")
+    class LightStrategy:
+        def get_name(self): return 'LightStrategy'
+        
+        def generate_signals(self, data):
+            # 使用 light_strategy 的逻辑
+            signals = []
+            for i in range(len(data)):
+                if i < 50:
+                    signals.append(0)
+                else:
+                    df_slice = data.iloc[:i+1].copy()
+                    signal = generate_signal(df_slice)
+                    signals.append(1 if signal.get('signal') == 'BUY' else -1 if signal.get('signal') == 'SELL' else 0)
+            return pd.Series(signals, index=data.index)
+    
+    # 配置
+    config = BacktestConfig(
+        initial_capital=capital,
+        symbol=symbol,
+        commission=0.001,
+        slippage=0.0005,
+    )
+    
+    # 运行
+    analyzer = WalkForwardAnalyzer(
+        config=config,
+        train_periods=180,   # 样本内 30天 (4h*180=30天)
+        test_periods=60,    # 样本外 10天
+        step_periods=30,    # 步长 5天
+    )
+    
+    print(f"\n🚀 开始 Walk-Forward 分析")
+    print(f"   数据量: {len(df)}")
+    print(f"   样本内: {analyzer.train_periods} 周期")
+    print(f"   样本外: {analyzer.test_periods} 周期")
+    print(f"   步长: {analyzer.step_periods} 周期")
+    
+    result = analyzer.run(df, LightStrategy(), indicators=['rsi', 'macd'])
+    
+    # 输出结果
+    print(f"\n📈 Walk-Forward 结果:")
+    print(f"   窗口数: {result.get('window_count', 0)}")
+    print(f"   有效窗口: {result.get('valid_windows', 0)}")
+    
+    if 'avg_total_return' in result:
+        print(f"   平均收益: {result['avg_total_return']:.2%}")
+        print(f"   平均回撤: {result['avg_max_drawdown']:.2%}")
+        print(f"   平均夏普: {result['avg_sharpe_ratio']:.2f}")
+        print(f"   胜率: {result['win_rate']:.1%}")
+    
+    # 保存
+    output = f"/root/.openclaw/workspace/quant/quant/logs/walkforward_{symbol}_{interval}.json"
+    analyzer.save_results(output)
+    print(f"\n✅ 结果已保存: {output}")
+    
+    return result
 
+
+# 主函数
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Walk-Forward 分析')
+    parser.add_argument('--symbol', default='BTCUSDT', help='交易对')
+    parser.add_argument('--interval', default='4h', help='K线周期')
+    parser.add_argument('--capital', type=float, default=10000, help='初始资金')
+    
+    args = parser.parse_args()
+    
+    run_walkforward(
+        symbol=args.symbol,
+        interval=args.interval,
+        capital=args.capital
+    )

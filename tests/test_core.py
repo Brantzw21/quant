@@ -160,9 +160,9 @@ class TestCorrelationAnalyzer:
         
         analyzer = CorrelationAnalyzer()
         
-        # 添加数据.seed(42)
-
-        np.random        btc = np.cumprod(1 + np.random.normal(0.001, 0.03, 100))
+        # 添加数据
+        np.random.seed(42)
+        btc = np.cumprod(1 + np.random.normal(0.001, 0.03, 100))
         eth = btc * 0.8 + np.random.normal(0, 0.02, 100)
         
         analyzer.add_price_series("BTC", btc.tolist())
